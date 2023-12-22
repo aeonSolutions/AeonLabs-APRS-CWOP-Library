@@ -388,7 +388,6 @@ void APRS_CWOP_CLASS::readSensorMeasurements() {
 
 }
 
-
 // ******************************************************
 bool APRS_CWOP_CLASS::initializeDynamicVar(  int size1D, int size2D ){    
     this->measurements = (float **)heap_caps_malloc(size1D * sizeof(float*), MALLOC_CAP_SPIRAM);
@@ -468,160 +467,6 @@ bool APRS_CWOP_CLASS::readSettings(fs::FS &fs){
 }
 
 // -------------------------------------------------------------------------------
-
-// *********************************************************
-// GBRL commands --------------------------------------------------------------
- bool APRS_CWOP_CLASS::helpCommands(String $BLE_CMD, uint8_t sendTo){
-    if($BLE_CMD != "$?" && $BLE_CMD !="$help" )
-        return false;
-
-    String dataStr="Measurements Commands:\n" \
-                    "$ufid                  - "+ this->interface->DeviceTranslation("ufid") +" unique fingerprint ID\n" \
-                    "$me new                - "+ this->interface->DeviceTranslation("me_new") +"\n" \
-                    "$me start              - "+ this->interface->DeviceTranslation("me_start") +"\n" \
-                    "$me end                - "+ this->interface->DeviceTranslation("me_end") +"\n" \
-                    "$me status             - "+ this->interface->DeviceTranslation("me_status") +"\n" \
-                    "\n" \        
-                    "$history               - "+ this->interface->DeviceTranslation("history") +"\n" \
-                    "$ns                    - "+ this->interface->DeviceTranslation("ns") +"\n" \
-                    "$mi                    - "+ this->interface->DeviceTranslation("mi") +"\n" \      
-                    "$set mi [sec]          - "+ this->interface->DeviceTranslation("set_mi") +"\n\n";
-
-    this->interface->sendBLEstring( dataStr, sendTo);
-      
-    return false;
- }
-
-// -------------------------------------------------------------------------------
-
-
-bool APRS_CWOP_CLASS::gbrl_commands(String $BLE_CMD, uint8_t sendTo){
-    String dataStr="";
-
-    if ($BLE_CMD == "$view ch2"){
-      dataStr = "Channel 2 current configuration is : " + String(this->ch2_sensor_type) +"\n";
-      this->interface->sendBLEstring( dataStr , sendTo); 
-      return true;
-    }
-
-    if ($BLE_CMD == "$view ch1"){
-      dataStr = "Current configuration on the channel 1 switch is :\n";
-      if (this->config.channel_1_switch_en){
-        dataStr += "Enabled, switch " + String(this->config.channel_1_switch_on_pos) + " is ON all other are set to OFF.\n";
-      } else {
-        dataStr += "Disabled. (all switches are set to OFF)\n";
-      }
-      this->interface->sendBLEstring( dataStr + "\n" , sendTo); 
-      return true;
-    }
-
-    if( $BLE_CMD.equals( "$set ch2 on" ) || $BLE_CMD.equals( "$set ch2 off" ) ){
-      return this->sw_commands( $BLE_CMD,  sendTo);
-    }
-    
-    if($BLE_CMD.indexOf("$set sw")>-1){
-      return this->sw_commands( $BLE_CMD,  sendTo);
-    }
-
-    if ($BLE_CMD == "$ufid"){
-      if (this->DATASET_NUM_SAMPLES == 0){
-          dataStr = this->interface->DeviceTranslation("no_data_entries") + "." +String(char(10));
-          this->interface->sendBLEstring( dataStr, sendTo);
-          return true;
-      }
-      dataStr =  this->interface->DeviceTranslation("calc_ufid") + "..." + this->interface->BaseTranslation("wait_moment")  + "." +String(char(10));
-      this->interface->sendBLEstring( dataStr, sendTo);
-      
-      this->interface->setMCUclockFrequency(this->interface->MAX_FREQUENCY);
-      
-      dataStr += "Unique Data Fingerprint ID:"+String(char(10));
-      dataStr += CryptoICserialNumber(this->interface)+"-"+macChallengeDataAuthenticity(this->interface, String(this->interface->rtc.getDateTime(true)) + String(roundFloat(this->last_measured_probe_temp,2)) );
-      dataStr += String(char(10) + String(char(10)) );
-      
-      this->interface->setMCUclockFrequency(this->interface->CURRENT_CLOCK_FREQUENCY);
-      this->interface->sendBLEstring( dataStr, sendTo);
-      return true;
-    }
-
-    if($BLE_CMD == "$mi"){
-      dataStr= this->interface->DeviceTranslation("curr_measure_interval") + " " + String(roundFloat(this->config.MEASUREMENT_INTERVAL/(60*1000) ,2)) + String(" min") + String(char(10));
-      this->interface->sendBLEstring( dataStr, sendTo);
-      return true;
-    }
-
-    if( $BLE_CMD == "$me status"){
-      if( this->Measurments_EN == false){
-          dataStr = this->interface->DeviceTranslation("measure_not_started") +  String("\n\n");
-      } else{
-          dataStr = this->interface->DeviceTranslation("measure_already_started") + String("\n");
-          dataStr += this->interface->DeviceTranslation("measure_num_records") + " " + String(this->DATASET_NUM_SAMPLES) + "\n\n";
-      }
-
-      this->interface->sendBLEstring( dataStr, sendTo); 
-      return true;
-    }
-    if( $BLE_CMD == "$me new"){
-        this->Measurments_NEW=true;
-        this->Measurments_EN=false;
-        this->DATASET_NUM_SAMPLES=0;
-        dataStr= this->interface->DeviceTranslation("new_started") +  String("\n\n");
-        this->interface->sendBLEstring( dataStr, sendTo); 
-        return true;
-    }
-    if($BLE_CMD == "$me start"){
-        if (this->Measurments_EN){
-            dataStr = this->interface->DeviceTranslation("measure_already_started_on") +  " " + String(this->measurement_Start_Time) + String("\n\n");
-            this->interface->sendBLEstring( dataStr, sendTo); 
-        }else{
-            this->DATASET_NUM_SAMPLES = 0;
-            this ->DATASET_NUM_SAMPLES_TOTAL = 0;
-            this->Measurments_NEW=true;
-            this->Measurments_EN=true;
-            this->measurement_Start_Time = this->interface->rtc.getDateTime(true);
-            this->initializeSensors();
-            
-            dataStr = this->interface->DeviceTranslation("measure_started_on") +  " " + String(this->measurement_Start_Time) + String("\n");
-            this->interface->sendBLEstring( dataStr, sendTo); 
-            
-            this->gbrl_summary_measurement_config(sendTo);
-        }
-        return true;
-
-    }
-    if( $BLE_CMD=="$me end"){
-        if(this->Measurments_EN==false){
-            dataStr= this->interface->DeviceTranslation("measure_already_ended")  + String( char(10));
-        }else{
-            this->Measurments_EN=false;
-            dataStr= this->interface->DeviceTranslation("measure_ended_on") +  " " + String(this->interface->rtc.getDateTime(true)) + String( char(10));
-        }
-        this->interface->sendBLEstring( dataStr, sendTo); 
-        return true;
-    }
-    if($BLE_CMD=="$ns"){
-        dataStr = this->interface->DeviceTranslation("num_data_measure") +  ": " + String(this->DATASET_NUM_SAMPLES+1) + String(char(10));
-        this->interface->sendBLEstring( dataStr, sendTo);
-        return true;
-    }
-    bool result =false;
-    result = this->helpCommands( $BLE_CMD,  sendTo);
-    
-    bool result2 =false;
-    result2 = this->history($BLE_CMD,  sendTo);
-    
-    bool result3 =false;
-    result3 = this->cfg_commands($BLE_CMD,  sendTo);
-    
-    bool result4 =false;
-    result4 = this->measurementInterval($BLE_CMD,  sendTo);    
-    
-    //this->gbrl_menu_selection();
-   
-   return ( result || result2 || result3 || result4 );
-
-}
-
-
 // ********************************************************
 bool APRS_CWOP_CLASS:: gbrl_summary_measurement_config( uint8_t sendTo){
     String dataStr = this->interface->DeviceTranslation("config_summary") +  ":\n";
@@ -758,32 +603,6 @@ bool APRS_CWOP_CLASS::history(String $BLE_CMD, uint8_t sendTo){
     this->interface->setMCUclockFrequency( this->interface->CURRENT_CLOCK_FREQUENCY);
   return true;
 }
-
-// *********************************************************
-// Device name and software version
-
-
-
-// Time synchronization and keeping
-const char    timeServer[] PROGMEM  = "utcnist.colorado.edu";  // Time server address to connect to (RFC868)
-const int     timePort              = 37;                      // Time server port
-unsigned long timeNextSync          = 0UL;                     // Next time to syncronize
-unsigned long timeDelta             = 0UL;                     // Difference between real time and internal clock
-bool          timeOk                = false;                   // Flag to know the time is accurate
-const int     timeZone              = 0;                       // Time zone
-const int     eeTime                = 0;                       // EEPROM address for storing last known good time
-
-
-// Statistics (round median filter for the last 3 values)
-enum      rMedIdx {MD_TEMP, MD_PRES, MD_RSSI, MD_SRAD, MD_VCC, MD_A0, MD_A1, MD_ALL};
-int       rMed[MD_ALL][4];
-
-// Sensors
-const unsigned long snsReadTime = 30UL * 1000UL;                          // Total time to read sensors, repeatedly, for aprsMsrmMax times
-const unsigned long snsDelayBfr = 3600000UL / aprsRprtHour - snsReadTime; // Delay before sensor readings
-const unsigned long snsDelayBtw = snsReadTime / aprsMsrmMax;              // Delay between sensor readings
-unsigned long       snsNextTime = 0UL;                                    // Next time to read the sensors
-
 
 // **************************************
 long APRS_CWOP_CLASS::altFeet(int altMeters){
@@ -1041,4 +860,156 @@ void APRS_CWOP_CLASS::aprsSendPosition(const char *comment = NULL) {
   if (comment != NULL) strcat(aprsPkt, comment);
   strcat_P(aprsPkt, eol);
   aprsSend(aprsPkt);
+}
+
+// *********************************************************
+// GBRL commands --------------------------------------------------------------
+ bool APRS_CWOP_CLASS::helpCommands(String $BLE_CMD, uint8_t sendTo){
+    if($BLE_CMD != "$?" && $BLE_CMD !="$help" )
+        return false;
+
+    String dataStr="Measurements Commands:\n" \
+                    "$ufid                  - "+ this->interface->DeviceTranslation("ufid") +" unique fingerprint ID\n" \
+                    "$me new                - "+ this->interface->DeviceTranslation("me_new") +"\n" \
+                    "$me start              - "+ this->interface->DeviceTranslation("me_start") +"\n" \
+                    "$me end                - "+ this->interface->DeviceTranslation("me_end") +"\n" \
+                    "$me status             - "+ this->interface->DeviceTranslation("me_status") +"\n" \
+                    "\n" \        
+                    "$history               - "+ this->interface->DeviceTranslation("history") +"\n" \
+                    "$ns                    - "+ this->interface->DeviceTranslation("ns") +"\n" \
+                    "$mi                    - "+ this->interface->DeviceTranslation("mi") +"\n" \      
+                    "$set mi [sec]          - "+ this->interface->DeviceTranslation("set_mi") +"\n\n";
+
+    this->interface->sendBLEstring( dataStr, sendTo);
+      
+    return false;
+ }
+
+// -------------------------------------------------------------------------------
+
+
+bool APRS_CWOP_CLASS::gbrl_commands(String $BLE_CMD, uint8_t sendTo){
+    String dataStr="";
+
+    if ($BLE_CMD == "$view ch2"){
+      dataStr = "Channel 2 current configuration is : " + String(this->ch2_sensor_type) +"\n";
+      this->interface->sendBLEstring( dataStr , sendTo); 
+      return true;
+    }
+
+    if ($BLE_CMD == "$view ch1"){
+      dataStr = "Current configuration on the channel 1 switch is :\n";
+      if (this->config.channel_1_switch_en){
+        dataStr += "Enabled, switch " + String(this->config.channel_1_switch_on_pos) + " is ON all other are set to OFF.\n";
+      } else {
+        dataStr += "Disabled. (all switches are set to OFF)\n";
+      }
+      this->interface->sendBLEstring( dataStr + "\n" , sendTo); 
+      return true;
+    }
+
+    if( $BLE_CMD.equals( "$set ch2 on" ) || $BLE_CMD.equals( "$set ch2 off" ) ){
+      return this->sw_commands( $BLE_CMD,  sendTo);
+    }
+    
+    if($BLE_CMD.indexOf("$set sw")>-1){
+      return this->sw_commands( $BLE_CMD,  sendTo);
+    }
+
+    if ($BLE_CMD == "$ufid"){
+      if (this->DATASET_NUM_SAMPLES == 0){
+          dataStr = this->interface->DeviceTranslation("no_data_entries") + "." +String(char(10));
+          this->interface->sendBLEstring( dataStr, sendTo);
+          return true;
+      }
+      dataStr =  this->interface->DeviceTranslation("calc_ufid") + "..." + this->interface->BaseTranslation("wait_moment")  + "." +String(char(10));
+      this->interface->sendBLEstring( dataStr, sendTo);
+      
+      this->interface->setMCUclockFrequency(this->interface->MAX_FREQUENCY);
+      
+      dataStr += "Unique Data Fingerprint ID:"+String(char(10));
+      dataStr += CryptoICserialNumber(this->interface)+"-"+macChallengeDataAuthenticity(this->interface, String(this->interface->rtc.getDateTime(true)) + String(roundFloat(this->last_measured_probe_temp,2)) );
+      dataStr += String(char(10) + String(char(10)) );
+      
+      this->interface->setMCUclockFrequency(this->interface->CURRENT_CLOCK_FREQUENCY);
+      this->interface->sendBLEstring( dataStr, sendTo);
+      return true;
+    }
+
+    if($BLE_CMD == "$mi"){
+      dataStr= this->interface->DeviceTranslation("curr_measure_interval") + " " + String(roundFloat(this->config.MEASUREMENT_INTERVAL/(60*1000) ,2)) + String(" min") + String(char(10));
+      this->interface->sendBLEstring( dataStr, sendTo);
+      return true;
+    }
+
+    if( $BLE_CMD == "$me status"){
+      if( this->Measurments_EN == false){
+          dataStr = this->interface->DeviceTranslation("measure_not_started") +  String("\n\n");
+      } else{
+          dataStr = this->interface->DeviceTranslation("measure_already_started") + String("\n");
+          dataStr += this->interface->DeviceTranslation("measure_num_records") + " " + String(this->DATASET_NUM_SAMPLES) + "\n\n";
+      }
+
+      this->interface->sendBLEstring( dataStr, sendTo); 
+      return true;
+    }
+    if( $BLE_CMD == "$me new"){
+        this->Measurments_NEW=true;
+        this->Measurments_EN=false;
+        this->DATASET_NUM_SAMPLES=0;
+        dataStr= this->interface->DeviceTranslation("new_started") +  String("\n\n");
+        this->interface->sendBLEstring( dataStr, sendTo); 
+        return true;
+    }
+    if($BLE_CMD == "$me start"){
+        if (this->Measurments_EN){
+            dataStr = this->interface->DeviceTranslation("measure_already_started_on") +  " " + String(this->measurement_Start_Time) + String("\n\n");
+            this->interface->sendBLEstring( dataStr, sendTo); 
+        }else{
+            this->DATASET_NUM_SAMPLES = 0;
+            this ->DATASET_NUM_SAMPLES_TOTAL = 0;
+            this->Measurments_NEW=true;
+            this->Measurments_EN=true;
+            this->measurement_Start_Time = this->interface->rtc.getDateTime(true);
+            this->initializeSensors();
+            
+            dataStr = this->interface->DeviceTranslation("measure_started_on") +  " " + String(this->measurement_Start_Time) + String("\n");
+            this->interface->sendBLEstring( dataStr, sendTo); 
+            
+            this->gbrl_summary_measurement_config(sendTo);
+        }
+        return true;
+
+    }
+    if( $BLE_CMD=="$me end"){
+        if(this->Measurments_EN==false){
+            dataStr= this->interface->DeviceTranslation("measure_already_ended")  + String( char(10));
+        }else{
+            this->Measurments_EN=false;
+            dataStr= this->interface->DeviceTranslation("measure_ended_on") +  " " + String(this->interface->rtc.getDateTime(true)) + String( char(10));
+        }
+        this->interface->sendBLEstring( dataStr, sendTo); 
+        return true;
+    }
+    if($BLE_CMD=="$ns"){
+        dataStr = this->interface->DeviceTranslation("num_data_measure") +  ": " + String(this->DATASET_NUM_SAMPLES+1) + String(char(10));
+        this->interface->sendBLEstring( dataStr, sendTo);
+        return true;
+    }
+    bool result =false;
+    result = this->helpCommands( $BLE_CMD,  sendTo);
+    
+    bool result2 =false;
+    result2 = this->history($BLE_CMD,  sendTo);
+    
+    bool result3 =false;
+    result3 = this->cfg_commands($BLE_CMD,  sendTo);
+    
+    bool result4 =false;
+    result4 = this->measurementInterval($BLE_CMD,  sendTo);    
+    
+    //this->gbrl_menu_selection();
+   
+   return ( result || result2 || result3 || result4 );
+
 }

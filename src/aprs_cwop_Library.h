@@ -150,7 +150,6 @@ class APRS_CWOP_CLASS {
 
             String EXPERIMENTAL_DATA_FILENAME = "measurements.csv";
 
-            
             // Measurements: RAM Storage of Live Data  ******************************
             // array size is the number of sensors to do data collection
             int NUM_SAMPLE_SAMPLING_READINGS;
@@ -164,8 +163,6 @@ class APRS_CWOP_CLASS {
 
             // configuration: PCB specific
             float    MCU_VDD = 3.38;
-
-
         } config_strut;
 
         config_strut config;
@@ -183,7 +180,25 @@ class APRS_CWOP_CLASS {
         DS18B20_SENSOR*   ds18b20;
         String ch2_sensor_type;
 
+        // Sensors
+        const unsigned long snsReadTime = 30UL * 1000UL;                          // Total time to read sensors, repeatedly, for aprsMsrmMax times
+        const unsigned long snsDelayBfr = 3600000UL / aprsRprtHour - snsReadTime; // Delay before sensor readings
+        const unsigned long snsDelayBtw = snsReadTime / aprsMsrmMax;              // Delay between sensor readings
+        unsigned long       snsNextTime = 0UL;                                    // Next time to read the sensors
 
+        // Time synchronization and keeping
+        const char    timeServer[] PROGMEM  = "utcnist.colorado.edu";  // Time server address to connect to (RFC868)
+        const int     timePort              = 37;                      // Time server port
+        unsigned long timeNextSync          = 0UL;                     // Next time to syncronize
+        unsigned long timeDelta             = 0UL;                     // Difference between real time and internal clock
+        bool          timeOk                = false;                   // Flag to know the time is accurate
+        const int     timeZone              = 0;                       // Time zone
+
+        // Statistics (round median filter for the last 3 values)
+        enum      rMedIdx {MD_TEMP, MD_PRES, MD_RSSI, MD_SRAD, MD_VCC, MD_A0, MD_A1, MD_ALL};
+        int       rMed[MD_ALL][4];
+
+        // ____________________________________________________
         APRS_CWOP_CLASS();
         
         void init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors );
