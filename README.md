@@ -28,6 +28,15 @@ The current code development is heavily based on the code by [cstroie](https://g
 
 <br>
 
+## Citizen Weather Observer Program
+The Citizen Weather Observer Program (CWOP) is a network of privately owned electronic weather stations concentrated in the United States but also located in over 150 countries. Being in this network allows volunteers with computerized weather stations to send automated surface weather observations to the National Weather Service. This data is then used by the Rapid Refresh forecast model to produce short term forecasts (3 to 12 hours into the future) of conditions across the United States' lower 48 states or in any other country.
+
+CWOP Observations are also re-distributed to the public. There is an extensive set of quality control software that puts your data through the ringer, assigns your data a quality rating and makes suggestions before the data is taken into the system. The CWOP was originally set up by amateur radio operators experimenting with packet radio, but now contains a majority of Internet-only connected stations. As of July 2015, more than 10,000 stations worldwide report regularly to the CWOP network.
+
+First one needs to signup at https://madis.ncep.noaa.gov/madis_cwop.shtml and when the token ID arrives it  needs to be added to the firmware code. An easy way to submit weather reports to the NOAA Citizen's Weather Observer Program is by using the cwop.rest API or the Ambient Weather API. Those looking into a vanilla C++ code implementation one can find it on GitHub here: https://github.com/cstroie/WxUno. To test if your hardware setup if is sending APRS packets and to ensure that everything is working properly one can look at a site like https://aprs.fi/ to see if it was received by the terrestrial network.
+
+<br>
+
 ## How to use this Library
 If you're using Arduino Studio for windows, download this repository and unzip it to the "Arduino/libraries" folder located in "Documents". <br>
 Next rename the unziped folder "AeonLabs-APRS-CWOP-Library-main" to "AeonLabs_APRS_CWOP". <br>
