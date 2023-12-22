@@ -24,6 +24,7 @@ Last update: 22-12-2023
 This is a simple C++ class library I maintain to speed up firmware code development on all my smart electronics for weather stations reporting to the APRS CWOP.
 This is still an early code development. Is memory intensive and lacks many code optimizations.
 
+The current code development is heavily based on the code by [cstroie](https://github.com/cstroie) found on this github repository: https://github.com/cstroie/WxUno
 
 <br>
 
