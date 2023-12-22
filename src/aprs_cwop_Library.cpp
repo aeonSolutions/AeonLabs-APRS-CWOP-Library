@@ -81,7 +81,15 @@ void MEASUREMENTS::init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M
     this->settings_defaults();
     this->interface = interface;
 
-    this->interface->mserial->printStrln("done.");
+  // Initialize the random number generator and set the APRS telemetry start sequence
+  randomSeed(hwTemp + timeUNIX(false) + hwVcc + millis());
+  aprsTlmSeq = random(1000);
+  
+  this->interface->mserial->printStrln( "Telemetry:" + String(aprsTlmSeq) );
+  // Start the sensor timer
+  snsNextTime = millis();
+
+  this->interface->mserial->printStrln("done.");
 }
 
 // **************************************************
@@ -392,14 +400,6 @@ void MEASUREMENTS::runExternalMeasurements(){
     this->LAST_DATA_MEASUREMENTS=millis(); 
     this->interface->mserial->printStrln("");
     this->interface->mserial->printStrln("Requesting sensor values (" + String(this ->DATASET_NUM_SAMPLES) + ")...");
-/*
-    xSemaphoreTake(this->interface->McuFreqSemaphore, portMAX_DELAY); // enter critical section
-      this->interface->McuFrequencyBusy=true;
-      this->interface->setMCUclockFrequency(this->interface->SAMPLING_FREQUENCY);
-      this->interface->mserial->printStrln("Setting to ADC read CPU Freq = " +String(getCpuFrequencyMhz()));
-      this->interface->McuFrequencyBusy=false;
-    xSemaphoreGive(this->interface->McuFreqSemaphore); // exit critical section    
-*/ 
 
     this->readSensorMeasurements();
     
@@ -420,21 +420,8 @@ void MEASUREMENTS::runExternalMeasurements(){
     }else{ // measurements buffer is not full
 
     }
-/*
-    xSemaphoreTake(this->interface->McuFreqSemaphore, portMAX_DELAY); // enter critical section
-      this->interface->McuFrequencyBusy=true;
-      this->interface->setMCUclockFrequency( this->interface->MIN_MCU_FREQUENCY);
-      this->interface->mserial->printStrln("Setting to min CPU Freq. = " +String(getCpuFrequencyMhz()));
-      this->interface->McuFrequencyBusy=false;
-    xSemaphoreGive(this->interface->McuFreqSemaphore); // exit critical section    
-*/
 
     this->scheduleWait=false;
-    /*
-    xSemaphoreTake(this->interface->MemLockSemaphoreCore1, portMAX_DELAY); // enter critical section
-      this->waitTimeSensors=0;
-    xSemaphoreGive(this->interface->MemLockSemaphoreCore1); // exit critical section
- */
   }
 
 /*
@@ -506,243 +493,133 @@ void MEASUREMENTS::readChannel2SensorMeasurements ( int pos ){
 
 // *****************************************************************************
 void MEASUREMENTS::readSensorMeasurements() {  
-  if ( this->config.channel_1_switch_on_pos > 1) {
-      this->interface->mserial->printStrln(" channel 1 : switch " +  String(this->config.channel_1_switch_on_pos) + " >> conductivity (Volt)");
-  }
-  if (this->config.channel_2_switch_en == true){
-    if(this->ch2_sensor_type  == "sht3x"){
-      this->interface->mserial->printStrln(" channel 2 : Temperature ("+String(char(176))+"C), Humidity (%)" );
-    }
-  }
-
   this->readOnboardSensorData(); 
 
-  if(this->config.channel_1_switch_on_pos <= 1){ // DS18B20 sensor & touch capacitive sensor
-    int zerosCount=0;
-
-    for (byte i = 0; i < this->config.NUM_SAMPLE_SAMPLING_READINGS; i++) {
-      this->interface->mserial->printStrln("");
-      this->interface->mserial->printStr(String(i));
-      this->interface->mserial->printStr(": ");
-
-      if(this->config.channel_1_switch_on_pos == 0){ // touch sensor
-        uint32_t output;
-        touch_pad_read_raw_data(TOUCH_PAD_NUM7,&output);
-        this->measurements [0][ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i  ] =  output;
-      }else{    // DS18B20 temperature sensor
-        this->ds18b20->requestMeasurements(); 
-        this->measurements [0][ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i  ] =  ( this->ds18b20->measurement[0] );
-      }
-      
-      this->readChannel2SensorMeasurements( this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i  );
-      delay(this->config.SAMPLING_INTERVAL);
-    }
-    
-  }else if ( this->config.channel_1_switch_on_pos > 1 || this->config.channel_1_switch_on_pos == 0 ){
-    this->readExternalAnalogData();
-  }
-
-  // .............................................................
-  if ( NULL != this->measurements [4] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + this->config.NUM_SAMPLE_SAMPLING_READINGS -1 ] ){
-    mWifi->start(10000,5);
-    this->MQTT_connect();
-    
-    this->publishData( this->OhmReading,  (uint32_t) this->adc_ch_calcukated_e_resistance_avg );
-    this->publishData( this->voltReading, (uint32_t) this->adc_ch_measured_voltage_avg  );
-    this->publishData( this->AmbTemp,     (uint32_t) this->onBoardSensors->onboardTHsensor->measurement[1] );
-    this->publishData( this->AmbHumidity, (uint32_t) this->onBoardSensors->onboardTHsensor->measurement[0] );
-    if (this->config.channel_2_switch_en == true && this->ch2_sensor_type != "disabled" ) {
-      this->publishData( this->ch2Temp,     (uint32_t) this->measurements [3] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + this->config.NUM_SAMPLE_SAMPLING_READINGS -1 ]  );
-      this->publishData( this->ch2Humidity, (uint32_t) this->measurements [4] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + this->config.NUM_SAMPLE_SAMPLING_READINGS -1 ]  );
-    }
-  }
+  this->ds18b20->requestMeasurements(); 
+  this->measurements [0][ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i  ] =  ( this->ds18b20->measurement[0] );
 
   this ->DATASET_NUM_SAMPLES ++;
   this ->DATASET_NUM_SAMPLES_TOTAL ++;
-}
 
-// *********************************************************
-void MEASUREMENTS::readExternalAnalogData() {
-  float adc_ch_analogRead_raw; 
-  float ADC_CH_REF_VOLTAGE; 
-  float adc_ch_measured_voltage; 
-  float adc_ch_calcukated_e_resistance; 
 
-  float adc_ch_measured_voltage_Sum = 0;
-  float adc_ch_calcukated_e_resistance_sum = 0;
-  int num_valid_sample_measurements_made = 0;
-    
-  //this->display->tft->pushImage (10,65,250,87,AEONLABS_16BIT_BITMAP_LOGO);
-//  this->display->tft->fillRect(10, 65 , 250, 87, TFT_BLACK);
- // this->display->tft->pushImage (this->display->TFT_CURRENT_X_RES-75,0,16,18,MEASURE_ICON_16BIT_BITMAP);
-  
-  // ToDo: Keep ON or turn it off at the end of measurments
-  // Enable power to ADC and I2C external plugs
-  digitalWrite(this->ENABLE_3v3_PWR_PIN,HIGH); //enable 3v3
-
-  /*
-  Set the attenuation for a particular pin
-  Default is 11 db
-    0	     0 ~ 750 mV     ADC_0db
-    2.5	   0 ~ 1050 mV    ADC_2_5db
-    6	     0 ~ 1300 mV    ADC_6db
-    11	   0 ~ 2500 mV    ADC_11db
-  */
-  analogSetPinAttenuation(EXT_IO_ANALOG_PIN, ADC_11db);
-  analogSetPinAttenuation(VOLTAGE_REF_PIN, ADC_11db);
-  
-  ADC_CH_REF_VOLTAGE = analogRead(VOLTAGE_REF_PIN) / this->MCU_ADC_DIVIDER * this->interface->config.BOARD_VDD;
-  float errorDev = ( ADC_CH_REF_VOLTAGE - 2.5 ) / 2.5;
-
-  String dataStr = String(this->config.NUM_SAMPLE_SAMPLING_READINGS) + " measurement samples requested\n";
-  dataStr       += "Sampling interval: " + String(this->config.SAMPLING_INTERVAL) + " ms\n";
-  dataStr       += "Ref. Voltage     : " + String(ADC_CH_REF_VOLTAGE) + " Volt\n";
-  dataStr       += "Error            : " +  String(errorDev*100) + "%\n";
-  dataStr       += "one moment...";
-  this->interface->mserial->printStr(dataStr);
-
-  this->display->tftPrintText(0,25,(char*) dataStr.c_str(), 2, "left", TFT_WHITE, true); 
-  delay(2000);
-
-  this->interface->mserial->DEBUG_EN = false;
-
-  int zerosCount=0;
-  for (byte i = 0; i < this->config.NUM_SAMPLE_SAMPLING_READINGS; i++) {
-    adc_ch_analogRead_raw = analogRead(this->EXT_IO_ANALOG_PIN);
-    adc_ch_analogRead_raw = adc_ch_analogRead_raw - errorDev*adc_ch_analogRead_raw;
-    // ADC Vin
-    adc_ch_measured_voltage = adc_ch_analogRead_raw  * this->interface->config.BOARD_VDD / this->MCU_ADC_DIVIDER;
-    
-    /*
-    How accurate is an Arduino Ohmmeter?
-    Gergely Makan, Robert Mingesz and Zoltan Gingl
-    Department of Technical Informatics, University of Szeged, Árpád tér 2, 6720, Szeged, Hungary
-    https://arxiv.org/ftp/arxiv/papers/1901/1901.03811.pdf
-    */
-   if ( this->config.channel_1_switch_on_pos == 0 ){
-    adc_ch_calcukated_e_resistance = 0;
-   }else{
-    adc_ch_calcukated_e_resistance = (this->config.ADC_REF_RESISTANCE[SELECTED_ADC_REF_RESISTANCE] * adc_ch_analogRead_raw ) / (MCU_ADC_DIVIDER- adc_ch_analogRead_raw);
-   }
-    adc_ch_calcukated_e_resistance = adc_ch_calcukated_e_resistance + adc_ch_calcukated_e_resistance*errorDev;
-    // SAMPLING_READING POS,  SENSOR POS, MEASUREMENTS_BUFFER_ POS
-
-    this->measurements [0] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i ]  = ( this->interface->config.BOARD_VDD ); 
-    this->measurements [1] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i ]  = ( adc_ch_measured_voltage ); 
-    this->measurements [2] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i ]  = ( adc_ch_calcukated_e_resistance );
-    
-    this->interface->mserial->printStrln("");
-    this->interface->mserial->printStr(String(i));
-    this->interface->mserial->printStr(": ");
-
-    this->interface->mserial->printStr("ADC Vref: ");
-    this->interface->mserial->printStr( String( this->measurements [0] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i ] ) );
-    this->interface->mserial->printStrln(" Volt");
-  
-    this->interface->mserial->printStr("ADC CH READ: ");
-    this->interface->mserial->printStr( String( this->measurements [1] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i ] ) );
-    this->interface->mserial->printStrln(" Volt");
-    
-    this->interface->mserial->printStr("Calc. E.R.: ");
-    this->interface->mserial->printStr( String( this->measurements [2] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i ] ) );
-    this->interface->mserial->printStrln("  Ohm");
-    
-    this->readChannel2SensorMeasurements( this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + i  );
-    
-    //ToDo add onboard sensor data
-    //this->readOnboardSensorData();
-
-    delay(this->config.SAMPLING_INTERVAL);
-
-    if (adc_ch_analogRead_raw==0) {
-      zerosCount++;
-    }else{
-      adc_ch_calcukated_e_resistance_sum = adc_ch_calcukated_e_resistance_sum + adc_ch_calcukated_e_resistance;
-      adc_ch_measured_voltage_Sum = adc_ch_measured_voltage_Sum + adc_ch_measured_voltage;
+    // Read the sensors
+  if (millis() >= snsNextTime) {
+    // Check the DHCP lease, if using DHCP
+    if (ethDHCP) Ethernet.maintain();
+    // Count to check if we need to send the APRS data
+    if (++this->aprsMsrmCount >= this->aprsMsrmMax) {
+      // Restart the counter
+      this->aprsMsrmCount = 0;
+      // Repeat sensor reading after the 'before' delay (long)
+      snsNextTime += snsDelayBfr;
     }
-  } // for
-  this->interface->mserial->DEBUG_EN = true;
+    else {
+      // Repeat sensor reading after the 'between' delay (short)
+      snsNextTime += snsDelayBtw;
+    }
+    // Set the telemetry bit 7 if the station is being probed
+    if (PROBE) aprsTlmBits = B10000000;
 
-  this->interface->mserial->printStrln("done.");
+    // Check the time and set the telemetry bit 2 if time is not accurate
+    unsigned long utm = timeUNIX();
+    if (!timeOk) aprsTlmBits |= B00000100;
 
+    // Set the telemetry bit 1 if the uptime is less than one day (recent reboot)
+    if (millis() < 86400000UL) aprsTlmBits |= B00000010;
 
+    // Read BMP280
+    float temp, pres;
+    if (atmo_ok) {
+      // Set the bit 5 to show the sensor is present (reverse)
+      aprsTlmBits |= B01000000;
+      // Get the weather parameters
+      temp = atmo.readTemperature();
+      pres = atmo.readPressure();
+      // Add to the round median filter
+      rMedIn(MD_TEMP, (int)(temp * 9 / 5 + 32));      // Store directly integer Fahrenheit
+      rMedIn(MD_PRES, (int)(pres * this->altCorr(this->config.altMeters) / 10.0));  // Store directly sea level in dPa
+    }
 
-  //this->display->tft->pushImage (this->display->TFT_CURRENT_X_RES-75,0,16,18,MEASURE_GREY_ICON_16BIT_BITMAP);
+    // Read BH1750, illuminance value in lux
+    uint16_t lux = light.readLightLevel();
+    // Calculate the solar radiation in W/m^2
+    // FIXME this is in cW/m^2
+    int solRad = (int)(lux * 0.79);
+    // Set the bit 5 to show the sensor is present (reverse) and there is any light
+    if (solRad > 0) aprsTlmBits |= B00100000;
+    // Set the bit 4 to show the sensor is saturated
+    if (solRad > 999) aprsTlmBits |= B00010000;
+    // Add to round median filter
+    rMedIn(MD_SRAD, solRad);
 
-  if (zerosCount>0) {
-    String msg =  String(zerosCount) + " zero(s) found. consider chg ref. R switch on the DAQ";
-    this->display->tftPrintText(0,25,(char*) msg.c_str(),2,"left", TFT_WHITE, true); 
-    this->interface->mserial->printStrln(msg);
-    this->interface->onBoardLED->led[0] = this->interface->onBoardLED->LED_RED;
-    this->interface->onBoardLED->statusLED(100, 2);
+    // Read Vcc (mV) and add to the round median filter
+    int vcc = readVcc();
+    rMedIn(MD_VCC, vcc);
+    if (vcc < 4750 or vcc > 5250) {
+      // Set the bit 3 to show the USB voltage is wrong (5V +/- 5%)
+      aprsTlmBits |= B00001000;
+    }
+
+    // Various analog telemetry
+    int a0 = readAnalog(A0);
+    int a1 = readAnalog(A1);
+
+    // Add to round median filter, mV (a / 1024 * Vcc)
+    rMedIn(MD_A0, (vcc * (unsigned long)a0) / 1024);
+    rMedIn(MD_A1, (vcc * (unsigned long)a1) / 1024);
+
+    // Upper part
+    // 500 / R(kO); R = R0(1024 / x - 1)
+    // Lower part
+    // Vout=RawADC0*0.0048828125;
+    // lux=(2500/Vout-500)/10;
+    //int lux = 51150L / a0 - 50;
+
+    // APRS (after the first 3600/(aprsMsrmMax*aprsRprtHour) seconds,
+    //       then every 60/aprsRprtHour minutes)
+    if (this->aprsMsrmCount == 0) {
+      // Reset the watchdog
+      wdt_reset();
+      // Get RSSI (will get FALSE (0) if the modem is not working)
+      // FIXME
+      int rssi = 0;
+      if (rssi) rMedIn(MD_RSSI, -rssi);
+      // Connect to APRS server
+      char aprsServerBuf[strlen_P((char*)this->config.aprsServer) + 1];
+      strncpy_P(aprsServerBuf, (char*) this->config.aprsServer, sizeof(aprsServerBuf));
+      
+      if (ethClient.connect(aprsServerBuf, aprsPort)) {
+        // Reset the watchdog
+        wdt_reset();
+        // Authentication
+        aprsAuthenticate();
+        // Send the position, altitude and comment in firsts minutes after boot
+        if (millis() < snsDelayBfr) aprsSendPosition();
+        // Send weather data if the athmospheric sensor is present
+        if (atmo_ok) aprsSendWeather(rMedOut(MD_TEMP), -1, rMedOut(MD_PRES), rMedOut(MD_SRAD));
+        // Send the telemetry
+        aprsSendTelemetry(rMedOut(MD_A0) / 20,
+                          rMedOut(MD_A1) / 20,
+                          rMedOut(MD_RSSI),
+                          (rMedOut(MD_VCC) - 4500) / 4,
+                          readMCUTemp() / 100 + 100,
+                          aprsTlmBits);
+        //aprsSendStatus("Fine weather");
+        // Close the connection
+        ethClient.stop();
+        // Keep the millis the connection worked
+        linkLastTime = millis();
+      }
+      else linkFailed();
+    }
   }
 
-  // ToDo: Keep ON or turn it off at the end of measurments
-  // Enable power to ADC and I2C external plugs
-  digitalWrite(this->ENABLE_3v3_PWR_PIN,HIGH); 
- 
-  this->adc_ch_measured_voltage_avg = adc_ch_measured_voltage_Sum / ( this->config.NUM_SAMPLE_SAMPLING_READINGS - zerosCount );
-  this->adc_ch_calcukated_e_resistance_avg = adc_ch_calcukated_e_resistance_sum /  ( this->config.NUM_SAMPLE_SAMPLING_READINGS - zerosCount );
-  String units=" Ohm";
-  if (adc_ch_calcukated_e_resistance_avg>1000){
-    adc_ch_calcukated_e_resistance_avg=adc_ch_calcukated_e_resistance_avg/1000;
-    units="k Ohm";
-  }
-
+  // Reset the watchdog
+  wdt_reset();
   
-  this->mWifi->start(10000,5);
-  if ( WiFi.status() != WL_CONNECTED ){
-    this->interface->mserial->printStrln("WIFI not connected");
-  }
-
-  String resultStr   =  "Summary of results on " + this->interface->config.DEVICE_NAME + ", reference \"" + this->config.SPECIMEN_REF_NAME + "\""; 
-  
-  this->interface->mserial->printStrln(resultStr);
-  this->interface->sendTelegramString(resultStr, this->interface->telegram->OWNER_CHAT_ID);
-
-  resultStr         = "Total data samples: "+String(this->config.NUM_SAMPLE_SAMPLING_READINGS - zerosCount)+"/"+String(this->config.NUM_SAMPLE_SAMPLING_READINGS);
-  
-  this->interface->mserial->printStrln(resultStr);
-  this->interface->sendTelegramString(resultStr, this->interface->telegram->OWNER_CHAT_ID);
-
-  resultStr         = "Avg ADC CH  : "+String(this->adc_ch_measured_voltage_avg)+" Volt  " + String(this->adc_ch_calcukated_e_resistance_avg) + units;
-  
-  this->interface->mserial->printStrln(resultStr);
-  this->interface->sendTelegramString(resultStr, this->interface->telegram->OWNER_CHAT_ID);
-
-  if (this->config.channel_2_switch_en == true && this->ch2_sensor_type != "disabled" ) {
-    resultStr       = "CH2 Temp     : " +  String( this->measurements [3] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + this->config.NUM_SAMPLE_SAMPLING_READINGS -1 ] ) ;  
-    resultStr       += "*C";
-
-    this->interface->mserial->printStrln(resultStr);
-    this->interface->sendTelegramString(resultStr, this->interface->telegram->OWNER_CHAT_ID);
-
-    resultStr       = "CH2 Humidity : " +  String( this->measurements [4] [ this->config.NUM_SAMPLE_SAMPLING_READINGS*this->DATASET_NUM_SAMPLES + this->config.NUM_SAMPLE_SAMPLING_READINGS -1 ] ) ;  
-    resultStr       += "%";
-
-    this->interface->mserial->printStrln(resultStr);
-    this->interface->sendTelegramString(resultStr, this->interface->telegram->OWNER_CHAT_ID);
-  }
-
- // onboard SHT3x sensor
-  this->onBoardSensors->request_onBoard_Sensor_Measurements();
-  resultStr       = "Ambient Temp     : " +  String( this->onBoardSensors->onboardTHsensor->measurement[1] ) ;  
-  resultStr       += "*C";
-  
-  this->interface->mserial->printStrln(resultStr);
-  this->interface->sendTelegramString(resultStr, this->interface->telegram->OWNER_CHAT_ID);
-
-  resultStr       = "Ambient Humidity : " +  String( this->onBoardSensors->onboardTHsensor->measurement[0] ) ;  
-  resultStr       += "%";    
-
-  this->interface->mserial->printStrln(resultStr);
-  this->interface->sendTelegramString(resultStr, this->interface->telegram->OWNER_CHAT_ID);
-  
-  resultStr = "....................................";
-  
-  this->interface->mserial->printStrln(resultStr);
-  this->interface->sendTelegramString(resultStr, this->interface->telegram->OWNER_CHAT_ID);
 }
+
+
 
 // ******************************************************
 bool MEASUREMENTS::initializeDynamicVar(  int size1D, int size2D ){    
@@ -1168,14 +1045,14 @@ long APRS_CWOP_CLASS::altFeet(int altMeters){
  }
 
  
-/**
+/** ***************************************************
   Simple median filter: get the median
   2014-03-25: started by David Cary
 
   @param idx the index in round median array
   @return the median
 */
-int rMedOut(int idx) {
+int APRS_CWOP_CLASS::rMedOut(int idx) {
   // Return the last value if the buffer is not full yet
   if (rMed[idx][0] < 3) return rMed[idx][3];
   else {
@@ -1187,13 +1064,13 @@ int rMedOut(int idx) {
   }
 }
 
-/**
+/** *****************************************************
   Simple median filter: add value to array
 
   @param idx the index in round median array
   @param x the value to add
 */
-void rMedIn(int idx, int x) {
+void APRS_CWOP_CLASS::rMedIn(int idx, int x) {
   // At index 0 there is the number of values stored
   if (rMed[idx][0] < 3) rMed[idx][0]++;
   // Shift one position
@@ -1203,12 +1080,12 @@ void rMedIn(int idx, int x) {
 }
 
 
-/**
+/** ****************************************************
   Send an APRS packet and, eventuall, print it to serial line
 
   @param *pkt the packet to send
 */
-void aprsSend(const char *pkt) {
+void APRS_CWOP_CLASS::aprsSend(const char *pkt) {
 #ifdef DEBUG
   Serial.print(pkt);
 #endif
@@ -1232,11 +1109,11 @@ char aprsTime(char *buf, size_t len) {
   snprintf_P(buf, len, PSTR("%02d%02d%02dh"), hh, mm, ss);
 }
 
-/**
+/** **************************************
   Send APRS authentication data
   user FW0727 pass -1 vers WxUno 3.1"
 */
-void aprsAuthenticate() {
+void APRS_CWOP_CLASS::aprsAuthenticate() {
   strcpy_P(aprsPkt, PSTR("user "));
   strcat_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, PSTR(" pass "));
@@ -1249,19 +1126,16 @@ void aprsAuthenticate() {
   aprsSend(aprsPkt);
 }
 
-/**
+/**  ******************************************************
   Send APRS weather data, then try to get the forecast
   FW0690>APRS,TCPIP*:@152457h4427.67N/02608.03E_.../...g...t044h86b10201L001WxUno
-  #ifdef DEBUG
-  Serial.print(pkt);
-  #endif
 
   @param temp temperature
   @param hmdt humidity
   @param pres athmospheric pressure
   @param lux illuminance
 */
-void aprsSendWeather(int temp, int hmdt, int pres, int lux) {
+void APRS_CWOP_CLASS::aprsSendWeather(int temp, int hmdt, int pres, int lux) {
   char buf[8];
   strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
@@ -1305,7 +1179,7 @@ void aprsSendWeather(int temp, int hmdt, int pres, int lux) {
   aprsSend(aprsPkt);
 }
 
-/**
+/**  *****************************************************
   Send APRS telemetry and, periodically, send the telemetry setup
   FW0690>APRS,TCPIP*:T#517,173,062,213,002,000,00000000
 
@@ -1316,7 +1190,7 @@ void aprsSendWeather(int temp, int hmdt, int pres, int lux) {
   @param temp internal temperature
   @param bits digital inputs
 */
-void aprsSendTelemetry(int a0, int a1, int rssi, int vcc, int temp, byte bits) {
+void APRS_CWOP_CLASS::aprsSendTelemetry(int a0, int a1, int rssi, int vcc, int temp, byte bits) {
   // Increment the telemetry sequence number, reset it if exceeds 999
   if (++aprsTlmSeq > 999) aprsTlmSeq = 0;
   // Send the telemetry setup if the sequence number is 0
@@ -1334,10 +1208,10 @@ void aprsSendTelemetry(int a0, int a1, int rssi, int vcc, int temp, byte bits) {
   aprsSend(aprsPkt);
 }
 
-/**
+/**   ******************************
   Send APRS telemetry setup
 */
-void aprsSendTelemetrySetup() {
+void APRS_CWOP_CLASS::aprsSendTelemetrySetup() {
   char padCallSign[10];
   strcpy_P(padCallSign, this->config.aprsCallSign);  // Workaround
   sprintf_P(padCallSign, PSTR("%-9s"), padCallSign);
@@ -1378,13 +1252,13 @@ void aprsSendTelemetrySetup() {
   aprsSend(aprsPkt);
 }
 
-/**
+/**  ****************************************
   Send APRS status
   FW0690>APRS,TCPIP*:>Fine weather
 
   @param message the status message to send
 */
-void aprsSendStatus(const char *message) {
+void APRS_CWOP_CLASS::aprsSendStatus(const char *message) {
   // Send only if the message is not empty
   if (message[0] != '\0') {
     // Send the APRS packet
@@ -1397,13 +1271,13 @@ void aprsSendStatus(const char *message) {
   }
 }
 
-/**
+/**   ***********************************************
   Send APRS position and altitude
   FW0690>APRS,TCPIP*:!DDMM.hhN/DDDMM.hhW$comments
 
   @param comment the comment to append
 */
-void aprsSendPosition(const char *comment = NULL) {
+void APRS_CWOP_CLASS::aprsSendPosition(const char *comment = NULL) {
   // Compose the APRS packet
   strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
@@ -1416,327 +1290,4 @@ void aprsSendPosition(const char *comment = NULL) {
   if (comment != NULL) strcat(aprsPkt, comment);
   strcat_P(aprsPkt, eol);
   aprsSend(aprsPkt);
-}
-
-/**
-  Read the analog pin after a delay, while sleeping, using interrupt
-
-  @param pin the analog pin
-  @return raw analog read value
-*/
-int readAnalog(uint8_t pin) {
-  // Allow for channel or pin numbers
-  if (pin >= 14) pin -= 14;
-
-  // Set the analog reference to DEFAULT, select the channel (low 4 bits).
-  // This also sets ADLAR (left-adjust result) to 0 (the default).
-  ADMUX = _BV(REFS0) | (pin & 0x07);
-  ADCSRA |= _BV(ADPS0) | _BV(ADPS1) | _BV(ADPS2);  // prescaler of 128
-  ADCSRA |= _BV(ADEN);  // enable the ADC
-  ADCSRA |= _BV(ADIE);  // enable intterupt
-
-  // Wait for voltage to settle
-  delay(10);
-  // Take an ADC reading in sleep mode
-  noInterrupts();
-  // Start conversion
-  ADCSRA |= _BV(ADSC);
-  set_sleep_mode(SLEEP_MODE_ADC);
-  interrupts();
-
-  // Awake again, reading should be done, but better make sure
-  // maybe the timer interrupt fired
-  while (bit_is_set(ADCSRA, ADSC));
-
-  // Reading register "ADCW" takes care of how to read ADCL and ADCH.
-  long wADC = ADCW;
-
-  // The returned reading
-  return (int)(wADC);
-}
-
-/**
-  Read the internal MCU temperature
-  The internal temperature has to be used with the internal reference of 1.1V.
-  Channel 8 can not be selected with the analogRead function yet.
-
-  @return temperature in hundredth of degrees Celsius, *calibrated for my device*
-*/
-int readMCUTemp() {
-  // Set the internal reference and mux.
-  ADMUX = (_BV(REFS1) | _BV(REFS0) | _BV(MUX3));
-  ADCSRA |= _BV(ADPS0) | _BV(ADPS1) | _BV(ADPS2);  // prescaler of 128
-  ADCSRA |= _BV(ADEN);  // enable the ADC
-  ADCSRA |= _BV(ADIE);  // enable intterupt
-
-  // Wait for voltage to settle
-  delay(10);
-  // Take an ADC reading in sleep mode
-  noInterrupts();
-  // Start conversion
-  ADCSRA |= _BV(ADSC);
-  set_sleep_mode(SLEEP_MODE_ADC);
-  interrupts();
-
-  // Awake again, reading should be done, but better make sure
-  // maybe the timer interrupt fired
-  while (bit_is_set(ADCSRA, ADSC));
-
-  // Reading register "ADCW" takes care of how to read ADCL and ADCH.
-  long wADC = ADCW;
-
-  // The returned temperature is in hundreds degrees Celsius; calibrated
-  return (int)(84.87 * wADC - 25840);
-}
-
-/*
-  Read the power supply voltage, by measuring the internal 1V1 reference
-
-  @return voltage in millivolts, *calibrated for my device*
-*/
-int readVcc() {
-  // Set the reference to Vcc and the measurement to the internal 1.1V reference
-  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-  ADCSRA |= _BV(ADPS0) | _BV(ADPS1) | _BV(ADPS2);  // prescaler of 128
-  ADCSRA |= _BV(ADEN);  // enable the ADC
-  ADCSRA |= _BV(ADIE);  // enable intterupt
-
-  // Wait for voltage to settle
-  delay(10);
-  // Take an ADC reading in sleep mode
-  noInterrupts();
-  // Start conversion
-  ADCSRA |= _BV(ADSC);
-  set_sleep_mode(SLEEP_MODE_ADC);
-  interrupts();
-
-  // Awake again, reading should be done, but better make sure
-  // maybe the timer interrupt fired
-  while (bit_is_set(ADCSRA, ADSC));
-
-  // Reading register "ADCW" takes care of how to read ADCL and ADCH.
-  long wADC = ADCW;
-
-  // Return Vcc in mV; 1125300 = 1.1 * 1024 * 1000
-  // 1.1V calibration: 1.074
-  return (int)(1099776UL / wADC);
-}
-
-/**
-  Software reset the MCU
-  (c) Mircea Diaconescu http://web-engineering.info/node/29
-*/
-void softReset(uint8_t prescaller) {
-  Serial.print(F("Reboot"));
-  // Start watchdog with the provided prescaller
-  wdt_enable(prescaller);
-  // Wait for the prescaller time to expire
-  // without sending the reset signal by using
-  // the wdt_reset() method
-  while (true) {
-    Serial.print(F("."));
-    delay(1000);
-  }
-}
-
-/**
-  Check if the link failed for too long (3600 / aprsRprtHour) and reset
-*/
-void linkFailed() {
-  if (millis() >= linkLastTime + 3600000UL / this->aprsRprtHour) {
-    Serial.println(F("Connection failed for the last reports"));
-    // If time is good, store it
-    if (timeOk) timeEEWrite(timeUNIX(false));
-    // Reset the MCU (in 8s)
-    softReset(WDTO_8S);
-  }
-}
-
-/**
-  Print a character array from program memory
-*/
-void print_P(const char *str) {
-  uint8_t val;
-  do {
-    val = pgm_read_byte(str++);
-    if (val) Serial.write(val);
-  } while (val);
-}
-
-/**
-  Main Arduino setup function
-*/
-void setup() {
-  // Init the serial com
-  Serial.begin(9600);
-  Serial.println();
-  print_P(this->interface->config.DEVICE_NAME);
-  Serial.print(F(" "));
-  print_P(this->interface->firmware_version);
-  Serial.print(F(" "));
-  Serial.println(__DATE__);
-
-  // Start the Ethernet connection:
-  if (ethDHCP = Ethernet.begin(ethMAC) == 0) {
-    Serial.println(F("Failed to configure Ethernet using DHCP"));
-    Ethernet.begin(ethMAC, ethIP, ethDNS, ethGW, ethMSK);
-  }
-  // Print the Ethernet shield's IP address:
-  Serial.print(F("IP address: "));
-  Serial.println(Ethernet.localIP());
-  // Give the Ethernet shield a second to initialize:
-  delay(1000);
-
-  // Start time sync
-  timeUNIX();
-
-  // BMP280
-  atmo_ok = atmo.begin(0x76);
-  if (atmo_ok) Serial.println(F("BMP280 sensor detected"));
-  else         Serial.println(F("BMP280 sensor missing"));
-
-  // BH1750
-  light.begin(BH1750_CONTINUOUS_HIGH_RES_MODE);
-  uint16_t lux = light.readLightLevel();
-  light_ok = true;
-
-  // Hardware data
-  int hwTemp = readMCUTemp();
-  int hwVcc  = readVcc();
-  Serial.print(F("Temp: "));
-  Serial.println((float)hwTemp / 100, 2);
-  Serial.print(F("Vcc : "));
-  Serial.println((float)hwVcc / 1000, 3);
-
-  // Initialize the random number generator and set the APRS telemetry start sequence
-  randomSeed(hwTemp + timeUNIX(false) + hwVcc + millis());
-  aprsTlmSeq = random(1000);
-  Serial.print(F("TLM : "));
-  Serial.println(aprsTlmSeq);
-
-  // Start the sensor timer
-  snsNextTime = millis();
-
-  // Enable the watchdog
-  wdt_enable(WDTO_8S);
-}
-
-/**
-  Main Arduino loop
-*/
-void loop() {
-  // Read the sensors
-  if (millis() >= snsNextTime) {
-    // Check the DHCP lease, if using DHCP
-    if (ethDHCP) Ethernet.maintain();
-    // Count to check if we need to send the APRS data
-    if (++this->aprsMsrmCount >= this->aprsMsrmMax) {
-      // Restart the counter
-      this->aprsMsrmCount = 0;
-      // Repeat sensor reading after the 'before' delay (long)
-      snsNextTime += snsDelayBfr;
-    }
-    else {
-      // Repeat sensor reading after the 'between' delay (short)
-      snsNextTime += snsDelayBtw;
-    }
-    // Set the telemetry bit 7 if the station is being probed
-    if (PROBE) aprsTlmBits = B10000000;
-
-    // Check the time and set the telemetry bit 2 if time is not accurate
-    unsigned long utm = timeUNIX();
-    if (!timeOk) aprsTlmBits |= B00000100;
-
-    // Set the telemetry bit 1 if the uptime is less than one day (recent reboot)
-    if (millis() < 86400000UL) aprsTlmBits |= B00000010;
-
-    // Read BMP280
-    float temp, pres;
-    if (atmo_ok) {
-      // Set the bit 5 to show the sensor is present (reverse)
-      aprsTlmBits |= B01000000;
-      // Get the weather parameters
-      temp = atmo.readTemperature();
-      pres = atmo.readPressure();
-      // Add to the round median filter
-      rMedIn(MD_TEMP, (int)(temp * 9 / 5 + 32));      // Store directly integer Fahrenheit
-      rMedIn(MD_PRES, (int)(pres * this->altCorr(this->config.altMeters) / 10.0));  // Store directly sea level in dPa
-    }
-
-    // Read BH1750, illuminance value in lux
-    uint16_t lux = light.readLightLevel();
-    // Calculate the solar radiation in W/m^2
-    // FIXME this is in cW/m^2
-    int solRad = (int)(lux * 0.79);
-    // Set the bit 5 to show the sensor is present (reverse) and there is any light
-    if (solRad > 0) aprsTlmBits |= B00100000;
-    // Set the bit 4 to show the sensor is saturated
-    if (solRad > 999) aprsTlmBits |= B00010000;
-    // Add to round median filter
-    rMedIn(MD_SRAD, solRad);
-
-    // Read Vcc (mV) and add to the round median filter
-    int vcc = readVcc();
-    rMedIn(MD_VCC, vcc);
-    if (vcc < 4750 or vcc > 5250) {
-      // Set the bit 3 to show the USB voltage is wrong (5V +/- 5%)
-      aprsTlmBits |= B00001000;
-    }
-
-    // Various analog telemetry
-    int a0 = readAnalog(A0);
-    int a1 = readAnalog(A1);
-
-    // Add to round median filter, mV (a / 1024 * Vcc)
-    rMedIn(MD_A0, (vcc * (unsigned long)a0) / 1024);
-    rMedIn(MD_A1, (vcc * (unsigned long)a1) / 1024);
-
-    // Upper part
-    // 500 / R(kO); R = R0(1024 / x - 1)
-    // Lower part
-    // Vout=RawADC0*0.0048828125;
-    // lux=(2500/Vout-500)/10;
-    //int lux = 51150L / a0 - 50;
-
-    // APRS (after the first 3600/(aprsMsrmMax*aprsRprtHour) seconds,
-    //       then every 60/aprsRprtHour minutes)
-    if (this->aprsMsrmCount == 0) {
-      // Reset the watchdog
-      wdt_reset();
-      // Get RSSI (will get FALSE (0) if the modem is not working)
-      // FIXME
-      int rssi = 0;
-      if (rssi) rMedIn(MD_RSSI, -rssi);
-      // Connect to APRS server
-      char aprsServerBuf[strlen_P((char*)this->config.aprsServer) + 1];
-      strncpy_P(aprsServerBuf, (char*) this->config.aprsServer, sizeof(aprsServerBuf));
-      
-      if (ethClient.connect(aprsServerBuf, aprsPort)) {
-        // Reset the watchdog
-        wdt_reset();
-        // Authentication
-        aprsAuthenticate();
-        // Send the position, altitude and comment in firsts minutes after boot
-        if (millis() < snsDelayBfr) aprsSendPosition();
-        // Send weather data if the athmospheric sensor is present
-        if (atmo_ok) aprsSendWeather(rMedOut(MD_TEMP), -1, rMedOut(MD_PRES), rMedOut(MD_SRAD));
-        // Send the telemetry
-        aprsSendTelemetry(rMedOut(MD_A0) / 20,
-                          rMedOut(MD_A1) / 20,
-                          rMedOut(MD_RSSI),
-                          (rMedOut(MD_VCC) - 4500) / 4,
-                          readMCUTemp() / 100 + 100,
-                          aprsTlmBits);
-        //aprsSendStatus("Fine weather");
-        // Close the connection
-        ethClient.stop();
-        // Keep the millis the connection worked
-        linkLastTime = millis();
-      }
-      else linkFailed();
-    }
-  }
-
-  // Reset the watchdog
-  wdt_reset();
 }

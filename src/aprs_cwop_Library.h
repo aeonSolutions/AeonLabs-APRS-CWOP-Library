@@ -189,7 +189,6 @@ class APRS_CWOP_CLASS {
         void settings_defaults();
         // **********************************
         void readSensorMeasurements();
-        void readExternalAnalogData();
         void readOnboardSensorData();
         void runExternalMeasurements();
         void readChannel2SensorMeasurements(int pos);
@@ -212,6 +211,21 @@ class APRS_CWOP_CLASS {
         // Setup configuration and settings *******************************************
         bool readSettings( fs::FS &fs = LittleFS );
         bool saveSettings( fs::FS &fs = LittleFS  );
+
+        // ****************************************************
+        long  altFeet(int altMeters);
+        float altCorr(int altMeters);
+
+        int rMedOut(int idx);
+        void rMedIn(int idx, int x);
+
+        void aprsSend(const char *pkt);
+        void aprsAuthenticate();
+        void aprsSendWeather(int temp, int hmdt, int pres, int lux);
+        void aprsSendTelemetry(int a0, int a1, int rssi, int vcc, int temp, byte bits);
+        void aprsSendTelemetrySetup();
+        void aprsSendStatus(const char *message);
+        void aprsSendPosition(const char *comment = NULL);
 
 };
 
