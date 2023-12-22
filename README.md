@@ -33,6 +33,7 @@ The [Citizen Weather Observer Program](https://www.weather.gov/cle/CWOP) (CWOP) 
 
 There is an extensive set of quality control software that puts one's weather data through the ringer, assigns a quality rating and makes suggestions before the data is taken into the system. The CWOP was originally set up by amateur radio operators experimenting with packet radio, but now contains a majority of Internet-only connected stations. As of July 2015, more than 10,000 stations worldwide report regularly to the CWOP network.
 
+**How to connect to the CWOP Network** <br>
 First one needs to signup at https://madis.ncep.noaa.gov/madis_cwop.shtml and when the token ID arrives it  needs to be added to the firmware code. An easy way to submit weather reports to the NOAA Citizen's Weather Observer Program is by using the cwop.rest API or the Ambient Weather API. Those looking into a vanilla C++ code implementation one can find it on GitHub here: https://github.com/cstroie/WxUno. To test if your hardware setup if is sending APRS packets and to ensure that everything is working properly one can look at a site like https://aprs.fi/ to see if it was received by the terrestrial network.
 
 <br>
