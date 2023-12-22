@@ -62,7 +62,7 @@ extern "C"
   
 
   // **************************** == Measurements Class == ************************
-class MEASUREMENTS {
+class APRS_CWOP_CLASS {
     private:
         INTERFACE_CLASS* interface;
         M_WIFI_CLASS* mWifi = NULL ;
@@ -97,12 +97,29 @@ class MEASUREMENTS {
         bool sw_commands(String $BLE_CMD, uint8_t sendTo);
 
     public:
+
         // external 3V3 power
         uint8_t ENABLE_3v3_PWR_PIN;
         // Voltage reference
         uint8_t VOLTAGE_REF_PIN;
-        // External PWM / Digital IO Pin
-        uint8_t EXT_IO_ANALOG_PIN;
+
+        // Reports and measurements
+        const int aprsRprtHour   = 10; // Number of APRS reports per hour
+        const int aprsMsrmMax    = 3;  // Number of measurements per report (keep even)
+        int       aprsMsrmCount  = 0;  // Measurements counter
+        int       aprsTlmSeq     = 0;  // Telemetry sequence mumber
+
+        bool       PROBE              = true;                   // True if the station is being probed
+
+        const char aprsPath[]     PROGMEM = ">APRS,TCPIP*:";
+        const char aprsTlmPARM[]  PROGMEM = ":PARM.Light,Soil,RSSI,Vcc,Tmp,PROBE,ATMO,LUX,SAT,BAT,TM,RB,B8";
+        const char aprsTlmEQNS[]  PROGMEM = ":EQNS.0,20,0,0,20,0,0,-1,0,0,0.004,4.5,0,1,-100";
+        const char aprsTlmUNIT[]  PROGMEM = ":UNIT.mV,mV,dBm,V,C,prb,on,on,sat,low,err,N/A,N/A";
+        const char aprsTlmBITS[]  PROGMEM = ":BITS.10011111, ";
+        const char eol[]          PROGMEM = "\r\n";
+
+        char       aprsPkt[100]           = "";     // The APRS packet buffer, largest packet is 82 for v2.1
+
 
         bool hasNewMeasurementValues;
         float last_measured_probe_temp;
@@ -116,9 +133,21 @@ class MEASUREMENTS {
 
            // ...................................................     
         typedef struct{
+            String aprsCallSign  = "FW0727";
+            String aprsPassCode  = "-1";
+            String aprsLocation  = "4455.29N/02527.08E_";
+
+            // Telemetry bits
+            char aprsTlmBits;
+
+            // APRS parameters
+            String  aprsServer;          // CWOP APRS-IS server address to connect to
+            int   aprsPort;              // CWOP APRS-IS port
+
+            int   altMeters;             // Altitude in Bucharest
+
             String EXPERIMENTAL_DATA_FILENAME = "measurements.csv";
 
-            String SPECIMEN_REF_NAME;
             
             // Measurements: RAM Storage of Live Data  ******************************
             // array size is the number of sensors to do data collection
@@ -130,15 +159,9 @@ class MEASUREMENTS {
             unsigned long UPLOAD_DATASET_DELTA_TIME;
             unsigned long MEASUREMENT_INTERVAL;
 
-            // Reference resistance values for the embbeded resistivimeter : loaded from config file
-            float ADC_REF_RESISTANCE[4];
 
             // configuration: PCB specific
             float    MCU_VDD = 3.38;
-
-            bool     channel_1_switch_en;
-            uint8_t  channel_1_switch_on_pos;
-            bool     channel_2_switch_en;
 
 
         } config_strut;
@@ -194,3 +217,4 @@ class MEASUREMENTS {
 
 
 #endif
+

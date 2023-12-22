@@ -59,6 +59,9 @@ MEASUREMENTS::MEASUREMENTS() {
     this->Measurments_NEW=false;
     this->Measurments_EN=false;
     this->DATASET_NUM_SAMPLES=0;
+
+    // Telemetry bits
+    this->aprsTlmBits     = B00000000;
 }
 
 
@@ -174,6 +177,13 @@ bool MEASUREMENTS::initializeSensors(){
 }
 // ****************************************************************************
 void MEASUREMENTS::settings_defaults(){
+
+    this->config.aprsServer                   = "cwop5.aprs.net";   // CWOP APRS-IS server address to connect to
+    this->config.aprsPort                     = 14580;              // CWOP APRS-IS port
+
+    this->config.aprsCallSign                 = "null";
+    this->config.aprsPassCode                 = "-1";
+    this->config.aprsLocation                 = "null";
 
     this->config.NUM_SAMPLE_SAMPLING_READINGS = 16;
     this->config.SAMPLING_INTERVAL            = 100; //ms
@@ -812,40 +822,6 @@ bool MEASUREMENTS::readSettings(fs::FS &fs){
     return true;
 }
 
-//----------------------------------------------------------------------------------
-// *********************** MQTT *****************************
-bool MEASUREMENTS::MQTT_connect() {
-   int8_t retvar;
-   if (this->mqtt->connected()) {
-      return true;
-   }
-   Serial.print("Connecting to MQTT... ");
-   uint8_t trytimes = 3;
-   while ((retvar = this->mqtt->connect()) != 0) {
-      this->interface->mserial->printStrln(String(this->mqtt->connectErrorString(retvar)));
-      this->interface->mserial->printStrln("retrying MQTT connection in 5500 mseconds...");
-      this->mqtt->disconnect();
-      delay(5500); // wait 5 seconds
-      trytimes--;
-      if (trytimes == 0) {
-         return false;
-      }
-   }
-   return true;
-}
-// ....................................
-bool MEASUREMENTS::publishData(Adafruit_MQTT_Publish *publishData, uint32_t dataVal){
-   if (! publishData->publish(dataVal)) {
-     this->interface->mserial->printStrln("Data publish Failed: " + String(dataVal) );
-     return false;
-   } else {
-     this->interface->mserial->printStrln("Data publish OK: " + String(dataVal) );
-     return true;
-   }
-}
-
-
-
 // -------------------------------------------------------------------------------
 
 // *********************************************************
@@ -855,17 +831,6 @@ bool MEASUREMENTS::publishData(Adafruit_MQTT_Publish *publishData, uint32_t data
         return false;
 
     String dataStr="Measurements Commands:\n" \
-                    "$view ch1              - View channel 1 configuration\n" \
-                    "$set sw off            - Set all switch off\n" \
-                    "$set sw1 on            - Position 1 on the Switch for the Temperature Sensor\n" \
-                    "$set sw2 on            - Position 2 on the Switch: Ohmmeter 1K dvider\n" \
-                    "$set sw3 on            - Position 3 on the Switch: Ohmmeter 20K dvider\n" \
-                    "$set sw4 on            - Position 4 on the Switch: Ohmmeter 200K dvider\n" \
-                    "$set sw5 on            - Position 5 on the Switch: Ohmmeter 2M dvider\n" \
-                    "\n" \                           
-                    "$view ch2              - View channel 2 configuration\n" \
-                    "$set ch2 [off/on]      - Connect a I2C compatible sensor to port 2\n" \
-                    "\n" \                    
                     "$ufid                  - "+ this->interface->DeviceTranslation("ufid") +" unique fingerprint ID\n" \
                     "$me new                - "+ this->interface->DeviceTranslation("me_new") +"\n" \
                     "$me start              - "+ this->interface->DeviceTranslation("me_start") +"\n" \
@@ -1011,69 +976,6 @@ bool MEASUREMENTS::gbrl_commands(String $BLE_CMD, uint8_t sendTo){
 
 }
 
-// ****************************************************
-bool MEASUREMENTS::sw_commands(String $BLE_CMD, uint8_t sendTo){
-    String dataStr="";
-
-    if($BLE_CMD.indexOf("$set sw off")>-1){
-      this->config.channel_1_switch_en=false;
-      this->config.channel_1_switch_on_pos=0;
-      uint8_t SELECTED_ADC_REF_RESISTANCE=0;      
-      dataStr =" All channel 1 switches set to OFF postion\n";
-    }
-
-    if($BLE_CMD.indexOf("$set sw1 on")>-1){
-      this->config.channel_1_switch_en=true;
-      this->config.channel_1_switch_on_pos=1;
-      uint8_t SELECTED_ADC_REF_RESISTANCE=0;      
-      dataStr ="position 1 on the switch for channel 1 is set to ON. All other are set to OFF\n";
-    }
-      
-    if($BLE_CMD.indexOf("$set sw2 on")>-1){
-      this->config.channel_1_switch_en=true;
-      this->config.channel_1_switch_on_pos=2;
-      this->SELECTED_ADC_REF_RESISTANCE = 0;
-
-      dataStr ="position 2 on the switch for channel 1 is set to ON ("+ addThousandSeparators( std::string( String(this->config.ADC_REF_RESISTANCE[this->SELECTED_ADC_REF_RESISTANCE]).c_str() ) ) +" Ohm). All other are set to OFF\n";
-    }
-
-    if($BLE_CMD.indexOf("$set sw3 on")>-1){
-      this->config.channel_1_switch_en=true;
-      this->config.channel_1_switch_on_pos=3;
-      this->SELECTED_ADC_REF_RESISTANCE = 1;
-      dataStr ="position 3 on the switch for channel 1 is set to ON ("+ addThousandSeparators( std::string( String(this->config.ADC_REF_RESISTANCE[this->SELECTED_ADC_REF_RESISTANCE] ).c_str()) ) +" Ohm). All other are set to OFF\n";
-
-    }
-
-    if($BLE_CMD.indexOf("$set sw4 on")>-1){
-      this->config.channel_1_switch_en=true;
-      this->config.channel_1_switch_on_pos=4;
-      this->SELECTED_ADC_REF_RESISTANCE = 2;
-      dataStr ="position 4 on the switch for channel 1 is set to ON ("+ addThousandSeparators( std::string( String(this->config.ADC_REF_RESISTANCE[this->SELECTED_ADC_REF_RESISTANCE] ).c_str() )) +" Ohm). All other are set to OFF\n";
-    }
-
-   if($BLE_CMD.indexOf("$set sw5 on")>-1){
-      this->config.channel_1_switch_en=true;
-      this->config.channel_1_switch_on_pos=5;
-      this->SELECTED_ADC_REF_RESISTANCE = 3;
-      dataStr ="position 5 on the switch for channel 1 is set to ON ("+ addThousandSeparators( std::string( String(this->config.ADC_REF_RESISTANCE[this->SELECTED_ADC_REF_RESISTANCE] ).c_str() )) +" Ohm). All other are set to OFF\n";
-    }
-    
-   if( $BLE_CMD.equals( "$set ch2 on" ) || $BLE_CMD.equals( "$set ch2 off" ) ){
-    if($BLE_CMD.equals( "$set ch2 on" ) ){
-        dataStr = "Channel 2 on the device is now enabled.";
-        this->config.channel_2_switch_en=true;
-    }else if($BLE_CMD.equals( "$set ch2 off" ) ){
-        dataStr = "Channel 2 on the device is now disabled.";
-        this->config.channel_2_switch_en=false;
-        this->ch2_sensor_type = "disabled";
-    }
-  }
-  
-  this->saveSettings();
-  this->interface->sendBLEstring( dataStr + "\n" , sendTo); 
-  return true;
-}
 
 // ********************************************************
 bool MEASUREMENTS:: gbrl_summary_measurement_config( uint8_t sendTo){
@@ -1214,32 +1116,8 @@ bool MEASUREMENTS::history(String $BLE_CMD, uint8_t sendTo){
 
 // *********************************************************
 // Device name and software version
-const char NODENAME[] PROGMEM = "WxUno";
-const char VERSION[]  PROGMEM = "3.1";
-bool       PROBE              = true;                   // True if the station is being probed
 
-// APRS parameters
-const char  aprsServer[] PROGMEM  = "cwop5.aprs.net";   // CWOP APRS-IS server address to connect to
-const int   aprsPort              = 14580;              // CWOP APRS-IS port
-#ifdef DEVEL
-const int   altMeters             = 83;                 // Altitude in Bucharest
-#else
-const int   altMeters             = 282;                // Altitude in Targoviste
-#endif
-const long  altFeet = (long)(altMeters * 3.28084);                                    // Altitude in feet
-const float altCorr = pow((float)(1.0 - 2.25577e-5 * altMeters), (float)(-5.25578));  // Altitude correction for QNH
 
-const char aprsCallSign[] PROGMEM = "FW0727";
-const char aprsPassCode[] PROGMEM = "-1";
-const char aprsPath[]     PROGMEM = ">APRS,TCPIP*:";
-const char aprsLocation[] PROGMEM = "4455.29N/02527.08E_";
-const char aprsTlmPARM[]  PROGMEM = ":PARM.Light,Soil,RSSI,Vcc,Tmp,PROBE,ATMO,LUX,SAT,BAT,TM,RB,B8";
-const char aprsTlmEQNS[]  PROGMEM = ":EQNS.0,20,0,0,20,0,0,-1,0,0,0.004,4.5,0,1,-100";
-const char aprsTlmUNIT[]  PROGMEM = ":UNIT.mV,mV,dBm,V,C,prb,on,on,sat,low,err,N/A,N/A";
-const char aprsTlmBITS[]  PROGMEM = ":BITS.10011111, ";
-const char eol[]          PROGMEM = "\r\n";
-
-char       aprsPkt[100]           = "";     // The APRS packet buffer, largest packet is 82 for v2.1
 
 // Time synchronization and keeping
 const char    timeServer[] PROGMEM  = "utcnist.colorado.edu";  // Time server address to connect to (RFC868)
@@ -1250,23 +1128,10 @@ bool          timeOk                = false;                   // Flag to know t
 const int     timeZone              = 0;                       // Time zone
 const int     eeTime                = 0;                       // EEPROM address for storing last known good time
 
-// Reports and measurements
-const int aprsRprtHour   = 10; // Number of APRS reports per hour
-const int aprsMsrmMax    = 3;  // Number of measurements per report (keep even)
-int       aprsMsrmCount  = 0;  // Measurements counter
-int       aprsTlmSeq     = 0;  // Telemetry sequence mumber
 
-// Telemetry bits
-char      aprsTlmBits    = B00000000;
 
-// Ethernet
-byte ethMAC[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-// Set the static IP address to use if the DHCP fails to assign
-IPAddress   ethIP(10, 200, 4, 99);
-IPAddress  ethDNS(10, 200, 4, 250);
-IPAddress   ethGW(10, 200, 4, 250);
-IPAddress  ethMSK(10, 200, 4, 255);
-bool       ethDHCP = false;
+
+
 
 // The APRS connection client
 EthernetClient  ethClient;
@@ -1285,16 +1150,24 @@ const unsigned long snsReadTime = 30UL * 1000UL;                          // Tot
 const unsigned long snsDelayBfr = 3600000UL / aprsRprtHour - snsReadTime; // Delay before sensor readings
 const unsigned long snsDelayBtw = snsReadTime / aprsMsrmMax;              // Delay between sensor readings
 unsigned long       snsNextTime = 0UL;                                    // Next time to read the sensors
+
 Adafruit_BMP280     atmo;                                                 // The athmospheric sensor
 bool                atmo_ok = false;                                      // The athmospheric sensor presence flag
 BH1750              light(0x23);                                          // The illuminance sensor
 bool                light_ok = false;                                     // The illuminance sensor presence flag
 
-// NTP
-const char  ntpServer[] PROGMEM = "europe.pool.ntp.org";  // NTP server to connect to (RFC5905)
-const int   ntpPort = 123;                                // NTP port
-EthernetUDP ethNTP;                                       // NTP UDP client
 
+// **************************************
+long APRS_CWOP_CLASS::altFeet(int altMeters){
+  return (long)(altMeters * 3.28084);  // Altitude in feet
+}
+
+// **************************************
+ float APRS_CWOP_CLASS::altCorr(int altMeters){
+  return pow((float)(1.0 - 2.25577e-5 * altMeters), (float)(-5.25578));  // Altitude correction for QNH
+ }
+
+ 
 /**
   Simple median filter: get the median
   2014-03-25: started by David Cary
@@ -1365,13 +1238,13 @@ char aprsTime(char *buf, size_t len) {
 */
 void aprsAuthenticate() {
   strcpy_P(aprsPkt, PSTR("user "));
-  strcat_P(aprsPkt, aprsCallSign);
+  strcat_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, PSTR(" pass "));
-  strcat_P(aprsPkt, aprsPassCode);
+  strcat_P(aprsPkt, this->config.aprsPassCode);
   strcat_P(aprsPkt, PSTR(" vers "));
-  strcat_P(aprsPkt, NODENAME);
+  strcat_P(aprsPkt, this->interface->DEVICE_NAME);
   strcat_P(aprsPkt, PSTR(" "));
-  strcat_P(aprsPkt, VERSION);
+  strcat_P(aprsPkt, this->interface->firmware_version);
   strcat_P(aprsPkt, eol);
   aprsSend(aprsPkt);
 }
@@ -1390,12 +1263,12 @@ void aprsAuthenticate() {
 */
 void aprsSendWeather(int temp, int hmdt, int pres, int lux) {
   char buf[8];
-  strcpy_P(aprsPkt, aprsCallSign);
+  strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
   strcat_P(aprsPkt, PSTR("@"));
   aprsTime(buf, sizeof(buf));
   strncat(aprsPkt, buf, sizeof(buf));
-  strcat_P(aprsPkt, aprsLocation);
+  strcat_P(aprsPkt, this->config.aprsLocation);
   // Wind (unavailable)
   strcat_P(aprsPkt, PSTR(".../...g..."));
   // Temperature
@@ -1427,7 +1300,7 @@ void aprsSendWeather(int temp, int hmdt, int pres, int lux) {
     strncat(aprsPkt, buf, sizeof(buf));
   }
   // Comment (device name)
-  strcat_P(aprsPkt, NODENAME);
+  strcat_P(aprsPkt, this->interface->config.DEVICE_NAME);
   strcat_P(aprsPkt, eol);
   aprsSend(aprsPkt);
 }
@@ -1449,7 +1322,7 @@ void aprsSendTelemetry(int a0, int a1, int rssi, int vcc, int temp, byte bits) {
   // Send the telemetry setup if the sequence number is 0
   if (aprsTlmSeq == 0) aprsSendTelemetrySetup();
   // Compose the APRS packet
-  strcpy_P(aprsPkt, aprsCallSign);
+  strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
   strcat_P(aprsPkt, PSTR("T"));
   char buf[40];
@@ -1466,10 +1339,10 @@ void aprsSendTelemetry(int a0, int a1, int rssi, int vcc, int temp, byte bits) {
 */
 void aprsSendTelemetrySetup() {
   char padCallSign[10];
-  strcpy_P(padCallSign, aprsCallSign);  // Workaround
+  strcpy_P(padCallSign, this->config.aprsCallSign);  // Workaround
   sprintf_P(padCallSign, PSTR("%-9s"), padCallSign);
   // Parameter names
-  strcpy_P(aprsPkt, aprsCallSign);
+  strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
   strcat_P(aprsPkt, PSTR(":"));
   strncat(aprsPkt, padCallSign, sizeof(padCallSign));
@@ -1477,7 +1350,7 @@ void aprsSendTelemetrySetup() {
   strcat_P(aprsPkt, eol);
   aprsSend(aprsPkt);
   // Equations
-  strcpy_P(aprsPkt, aprsCallSign);
+  strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
   strcat_P(aprsPkt, PSTR(":"));
   strncat(aprsPkt, padCallSign, sizeof(padCallSign));
@@ -1485,7 +1358,7 @@ void aprsSendTelemetrySetup() {
   strcat_P(aprsPkt, eol);
   aprsSend(aprsPkt);
   // Units
-  strcpy_P(aprsPkt, aprsCallSign);
+  strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
   strcat_P(aprsPkt, PSTR(":"));
   strncat(aprsPkt, padCallSign, sizeof(padCallSign));
@@ -1493,14 +1366,14 @@ void aprsSendTelemetrySetup() {
   strcat_P(aprsPkt, eol);
   aprsSend(aprsPkt);
   // Bit sense and project name
-  strcpy_P(aprsPkt, aprsCallSign);
+  strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
   strcat_P(aprsPkt, PSTR(":"));
   strncat(aprsPkt, padCallSign, sizeof(padCallSign));
   strcat_P(aprsPkt, aprsTlmBITS);
-  strcat_P(aprsPkt, NODENAME);
+  strcat_P(aprsPkt, this->interface->config.DEVICE_NAME);
   strcat_P(aprsPkt, PSTR("/"));
-  strcat_P(aprsPkt, VERSION);
+  strcat_P(aprsPkt, this->interface->firmware_version);
   strcat_P(aprsPkt, eol);
   aprsSend(aprsPkt);
 }
@@ -1515,7 +1388,7 @@ void aprsSendStatus(const char *message) {
   // Send only if the message is not empty
   if (message[0] != '\0') {
     // Send the APRS packet
-    strcpy_P(aprsPkt, aprsCallSign);
+    strcpy_P(aprsPkt, this->config.aprsCallSign);
     strcat_P(aprsPkt, aprsPath);
     strcat_P(aprsPkt, PSTR(">"));
     strcat(aprsPkt, message);
@@ -1532,13 +1405,13 @@ void aprsSendStatus(const char *message) {
 */
 void aprsSendPosition(const char *comment = NULL) {
   // Compose the APRS packet
-  strcpy_P(aprsPkt, aprsCallSign);
+  strcpy_P(aprsPkt, this->config.aprsCallSign);
   strcat_P(aprsPkt, aprsPath);
   strcat_P(aprsPkt, PSTR("!"));
-  strcat_P(aprsPkt, aprsLocation);
+  strcat_P(aprsPkt, this->config.aprsLocation);
   strcat_P(aprsPkt, PSTR("/000/000/A="));
   char buf[7];
-  sprintf_P(buf, PSTR("%06d"), altFeet);
+  sprintf_P(buf, PSTR("%06d"), this->altFeet(this->altMeters));
   strncat(aprsPkt, buf, sizeof(buf));
   if (comment != NULL) strcat(aprsPkt, comment);
   strcat_P(aprsPkt, eol);
@@ -1670,7 +1543,7 @@ void softReset(uint8_t prescaller) {
   Check if the link failed for too long (3600 / aprsRprtHour) and reset
 */
 void linkFailed() {
-  if (millis() >= linkLastTime + 3600000UL / aprsRprtHour) {
+  if (millis() >= linkLastTime + 3600000UL / this->aprsRprtHour) {
     Serial.println(F("Connection failed for the last reports"));
     // If time is good, store it
     if (timeOk) timeEEWrite(timeUNIX(false));
@@ -1697,9 +1570,9 @@ void setup() {
   // Init the serial com
   Serial.begin(9600);
   Serial.println();
-  print_P(NODENAME);
+  print_P(this->interface->config.DEVICE_NAME);
   Serial.print(F(" "));
-  print_P(VERSION);
+  print_P(this->interface->firmware_version);
   Serial.print(F(" "));
   Serial.println(__DATE__);
 
@@ -1757,9 +1630,9 @@ void loop() {
     // Check the DHCP lease, if using DHCP
     if (ethDHCP) Ethernet.maintain();
     // Count to check if we need to send the APRS data
-    if (++aprsMsrmCount >= aprsMsrmMax) {
+    if (++this->aprsMsrmCount >= this->aprsMsrmMax) {
       // Restart the counter
-      aprsMsrmCount = 0;
+      this->aprsMsrmCount = 0;
       // Repeat sensor reading after the 'before' delay (long)
       snsNextTime += snsDelayBfr;
     }
@@ -1787,7 +1660,7 @@ void loop() {
       pres = atmo.readPressure();
       // Add to the round median filter
       rMedIn(MD_TEMP, (int)(temp * 9 / 5 + 32));      // Store directly integer Fahrenheit
-      rMedIn(MD_PRES, (int)(pres * altCorr / 10.0));  // Store directly sea level in dPa
+      rMedIn(MD_PRES, (int)(pres * this->altCorr(this->config.altMeters) / 10.0));  // Store directly sea level in dPa
     }
 
     // Read BH1750, illuminance value in lux
@@ -1827,7 +1700,7 @@ void loop() {
 
     // APRS (after the first 3600/(aprsMsrmMax*aprsRprtHour) seconds,
     //       then every 60/aprsRprtHour minutes)
-    if (aprsMsrmCount == 0) {
+    if (this->aprsMsrmCount == 0) {
       // Reset the watchdog
       wdt_reset();
       // Get RSSI (will get FALSE (0) if the modem is not working)
@@ -1835,8 +1708,9 @@ void loop() {
       int rssi = 0;
       if (rssi) rMedIn(MD_RSSI, -rssi);
       // Connect to APRS server
-      char aprsServerBuf[strlen_P((char*)aprsServer) + 1];
-      strncpy_P(aprsServerBuf, (char*)aprsServer, sizeof(aprsServerBuf));
+      char aprsServerBuf[strlen_P((char*)this->config.aprsServer) + 1];
+      strncpy_P(aprsServerBuf, (char*) this->config.aprsServer, sizeof(aprsServerBuf));
+      
       if (ethClient.connect(aprsServerBuf, aprsPort)) {
         // Reset the watchdog
         wdt_reset();
