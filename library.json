@@ -1,0 +1,28 @@
+{
+  "name": "AeonLabsAPRSCWOPLibrary",
+  "keywords": "class libraires",
+  "description": "APRS CWOP Library",
+  "repository":
+  {
+    "type": "git",
+    "url": "http://aeonlabs.science"
+  },
+  "authors": 
+  [
+    {
+      "name": "Miguel T.",
+      "email": "mtpsilva@gmail.com",
+      "url": "http://www.aeonlabs.science",
+      "maintainer": true
+    }
+  ],
+  "dependencies":
+  {
+    "name": "OneWire",
+    "authors": "Paul Stoffregen",
+    "frameworks": "arduino"
+  },
+  "version": "1.0.0",
+  "frameworks": "arduino",
+  "platforms": "*"
+}
