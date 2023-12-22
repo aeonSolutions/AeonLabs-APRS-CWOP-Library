@@ -11,11 +11,11 @@
 [![contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat&label=Contributions&colorA=red&colorB=black	)](#)
 [<img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" data-canonical-src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="30" />](https://www.buymeacoffee.com/migueltomas)
 
-[Open Software Caralog](https://github.com/aeonSolutions/aeonlabs-open-software-catalogue)  >>  ESP32 C++ Base Firmware Libraries
+[Open Software Caralog](https://github.com/aeonSolutions/aeonlabs-open-software-catalogue)  >>  APRS CWOP Library
 
 <p align="right">
  <a href="https://github-com.translate.goog/aeonSolutions/aeonlabs-ESP32-C-Base-Firmware-Libraries?_x_tr_sl=en&_x_tr_tl=pt&_x_tr_hl=en&_x_tr_pto=wapp">Change Language</a> <br>
-Last update: 18-12-2023
+Last update: 22-12-2023
 </p>
 
 # [![CodeFactor](https://www.codefactor.io/repository/github/aeonsolutions/aeonlabs-esp32-c-base-firmware-libraries/badge)](https://www.codefactor.io/repository/github/aeonsolutions/aeonlabs-esp32-c-base-firmware-libraries) APRS CWOP Library for the ESP32
