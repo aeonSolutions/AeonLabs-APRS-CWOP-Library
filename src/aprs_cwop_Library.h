@@ -120,6 +120,8 @@ class APRS_CWOP_CLASS {
 
         char       aprsPkt[100]           = "";     // The APRS packet buffer, largest packet is 82 for v2.1
 
+        // The APRS connection client
+        unsigned long   linkLastTime = 0UL;             // Last connection time
 
         bool hasNewMeasurementValues;
         float last_measured_probe_temp;
@@ -182,7 +184,7 @@ class APRS_CWOP_CLASS {
         String ch2_sensor_type;
 
 
-        MEASUREMENTS();
+        APRS_CWOP_CLASS();
         
         void init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors );
         
@@ -190,15 +192,10 @@ class APRS_CWOP_CLASS {
         // **********************************
         void readSensorMeasurements();
         void readOnboardSensorData();
-        void runExternalMeasurements();
         void readChannel2SensorMeasurements(int pos);
-        void units();
+
 
         // ***********************************
-        void initSaveDataset();
-        bool saveDataMeasurements();
-
-        bool initializeDataMeasurementsFile();
         bool initializeSensors();
 
         bool initializeDynamicVar( int size1D, int size2D);

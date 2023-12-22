@@ -47,7 +47,7 @@ The current code development is heavily based on the code by cstroie found on th
 
 
 
-MEASUREMENTS::MEASUREMENTS() {
+MEASUREMENTS::APRS_CWOP_CLASS() {
     // external 3V3 power
     this->ENABLE_3v3_PWR_PIN = 38;
     // Voltage reference
@@ -66,7 +66,7 @@ MEASUREMENTS::MEASUREMENTS() {
 
 
 //****************************************************************
-void MEASUREMENTS::init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors ){    
+void APRS_CWOP_CLASS::init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors ){    
     this->interface = interface;
     this->interface->mserial->printStr("\ninit measurements library ...");
     this->mWifi = mWifi;
@@ -93,7 +93,7 @@ void MEASUREMENTS::init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M
 }
 
 // **************************************************
-bool MEASUREMENTS::initializeSensors(){
+bool APRS_CWOP_CLASS::initializeSensors(){
   this->NUMBER_OF_SENSORS_DATA_VALUES = 0;
   String dataStr = "";
   this->ch2_sensor_type ="disabled";
@@ -115,22 +115,6 @@ bool MEASUREMENTS::initializeSensors(){
     }
   }
 
-  if(this->config.channel_1_switch_on_pos == 0){ //  Touch sensor
-    touch_pad_init();
-    touch_pad_set_voltage(TOUCH_HVOLT_2V4, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
-    touch_pad_config(TOUCH_PAD_NUM2);
-  }else if(this->config.channel_1_switch_on_pos == 1){ //  DS18b20
-    this->ds18b20 = new DS18B20_SENSOR();
-    this->ds18b20->init(this->interface,  this->EXT_IO_ANALOG_PIN);
-    if ( this->ds18b20->startDS18B20() ){
-      dataStr += "The device is now setup for Temperature readings using the DS18b20 sensor.\n";
-      this->NUMBER_OF_SENSORS_DATA_VALUES =  this->NUMBER_OF_SENSORS_DATA_VALUES  + this->ds18b20->numSensors;
-    }
-  }else if(this->config.channel_1_switch_on_pos > 1){ //  Analog read
-    this->NUMBER_OF_SENSORS_DATA_VALUES =  this->NUMBER_OF_SENSORS_DATA_VALUES  + 3;
-    dataStr += "The device is now setup for electrical voltage readings using ADC sensor.\n";
-
-  }
   if (this->measurements != nullptr){
     this->interface->mserial->printStrln("Reinitializing Dynamic memory:");
     this->freeAllocatedMemory(this->measureIndex[0], this->measureIndex[1]);
@@ -140,15 +124,9 @@ bool MEASUREMENTS::initializeSensors(){
       this->interface->mserial->printStrln("Initializing Dynamic memory:");
   }
 
-
   this->interface->mserial->printStrln("Number of SAMPLING READINGS              :"+ String(this->config.NUM_SAMPLE_SAMPLING_READINGS));
   this->interface->mserial->printStrln("Number of Sensor Data values per reading :" + String(this->NUMBER_OF_SENSORS_DATA_VALUES));
   this->interface->mserial->printStrln("PSRAM buffer size                        :" + String(this->config.MEASUREMENTS_BUFFER_SIZE));
-
-  this->display->tftPrintText(0,160,(char*) String("Buff. size:"+ String(this->config.MEASUREMENTS_BUFFER_SIZE)).c_str(),2,"center", TFT_WHITE, true); 
-  delay(2000);
-
-  String units="";    
   
   this->measureIndex[0] =  this->NUMBER_OF_SENSORS_DATA_VALUES;
   this->measureIndex[1] = this->config.NUM_SAMPLE_SAMPLING_READINGS * this->config.MEASUREMENTS_BUFFER_SIZE;
@@ -184,7 +162,7 @@ bool MEASUREMENTS::initializeSensors(){
   return true;
 }
 // ****************************************************************************
-void MEASUREMENTS::settings_defaults(){
+void APRS_CWOP_CLASS::settings_defaults(){
 
     this->config.aprsServer                   = "cwop5.aprs.net";   // CWOP APRS-IS server address to connect to
     this->config.aprsPort                     = 14580;              // CWOP APRS-IS port
@@ -228,223 +206,8 @@ void MEASUREMENTS::settings_defaults(){
     digitalWrite( this->ENABLE_3v3_PWR_PIN,HIGH); // enabled 
 }
 
-// *****************************************************
-void MEASUREMENTS::units(){
-  float refRes;
-  String units=" Ohm";
-  refRes=this->config.ADC_REF_RESISTANCE[SELECTED_ADC_REF_RESISTANCE];
-  if(this->config.ADC_REF_RESISTANCE[SELECTED_ADC_REF_RESISTANCE]>10000){
-     refRes=this->config.ADC_REF_RESISTANCE[SELECTED_ADC_REF_RESISTANCE]/1000;
-    units="k Ohm";     
-  }else if(this->config.ADC_REF_RESISTANCE[SELECTED_ADC_REF_RESISTANCE]>1000000){
-     refRes=this->config.ADC_REF_RESISTANCE[SELECTED_ADC_REF_RESISTANCE]/1000000;
-     units="M Ohm";
-  }
-  
-  this->display->tftPrintText(0,160,(char*)String("Selected ref R:\n"+String(refRes)+ units).c_str(),2,"center", TFT_WHITE, true); 
-  this->interface->mserial->printStrln("ADC_REF_RESISTANCE="+String(this->config.ADC_REF_RESISTANCE[SELECTED_ADC_REF_RESISTANCE])+" Ohm");
-  delay(2000);
-}
-
-// ************************************************************************
-// *********************************************************
-//  create new CSV ; delimeted dataset file 
-bool MEASUREMENTS::initializeDataMeasurementsFile(){
-  if (LittleFS.exists("/" +  this->config.EXPERIMENTAL_DATA_FILENAME)){
-    return true;
-  }
-  // create new CSV ; delimeted dataset file 
-  
-  File expFile = LittleFS.open("/" + this->config.EXPERIMENTAL_DATA_FILENAME,"w");
-  if (expFile){
-    this->interface->mserial->printStr("Creating a new dataset CSV file and adding header ...");
-    String DataHeader[this->config.NUM_SAMPLE_SAMPLING_READINGS];
-    
-    DataHeader[0]="Date&Time";
-    DataHeader[1]="ANALOG RAW (0-4095)";
-    DataHeader[2]="Vref (Volt)";
-    DataHeader[3]="V (Volt)";
-    DataHeader[4]="R (Ohm)";
-    DataHeader[5]="AHT TEMP (*C)";
-    DataHeader[6]="AHT Humidity (%)";
-    DataHeader[7]="Accel X";
-    DataHeader[8]="Accel Y";
-    DataHeader[9]="Accel Z";
-    DataHeader[10]="Gyro X";
-    DataHeader[11]="Gyro Y";
-    DataHeader[12]="Gyro Z";
-    DataHeader[13]="LSM6DS3 Temp (*C)";
-    DataHeader[14]="Bus non-errors";
-    DataHeader[15]="Bus Erros";
-    DataHeader[16]="Validation";
-    DataHeader[17]="CHIP ID";          
-    
-    String lineRowOfData="";
-    for (int j = 0; j < this->config.NUM_SAMPLE_SAMPLING_READINGS; j++) {
-      lineRowOfData= lineRowOfData + DataHeader[j] +";";
-    }
-    expFile.println(lineRowOfData);        
-    expFile.close();
-    this->interface->mserial->printStrln("header added to the dataset file.");
-  }else{
-    this->interface->mserial->printStrln("Error creating file(2): " + this->config.EXPERIMENTAL_DATA_FILENAME);
-    return false;
-  }
-  this->interface->mserial->printStrln("");  
-  return true;
-}
-
-// *********************************************************
-bool MEASUREMENTS::saveDataMeasurements(){
-  this->interface->onBoardLED->led[0] = this->interface->onBoardLED->LED_GREEN;
-  this->interface->onBoardLED->statusLED(100, 0);
-
-  File expFile = LittleFS.open("/" + this->config.EXPERIMENTAL_DATA_FILENAME,"a+");
-  if ( expFile ){
-    this->interface->mserial->printStr("dataset CSV file.("+ this->config.EXPERIMENTAL_DATA_FILENAME +")" );
-    this->interface->mserial->printStrln("[" + String(this->config.NUM_SAMPLE_SAMPLING_READINGS) + "][" + String( this->NUMBER_OF_SENSORS_DATA_VALUES -1 ) + "][" + String( this->config.MEASUREMENTS_BUFFER_SIZE -1 ) + "] ...");
-    
-    // ---------------- add GEO Location fingerprint ----------------------------------
-    this->mWifi->get_ip_geo_location_data("", true);
-    float lat = 0.0f;
-    float lon= 0.0f; 
-    if ( this->mWifi->geoLocationInfoJson.isNull() == false ){
-      if(this->mWifi->geoLocationInfoJson.containsKey("lat")){
-        lat = this->mWifi->geoLocationInfoJson["lat"];
-      }
-      if(this->mWifi->geoLocationInfoJson.containsKey("lon")){
-        lon = this->mWifi->geoLocationInfoJson["lon"];
-      }
-    }
-
-    this->interface->mserial->printStrln( "\nGEO Location FingerPrint is : " );
-    String geoFingerprint = String( this->interface->rtc.getEpoch()  ) + "-" + String(this->mWifi->requestGeoLocationDateTime) + "-" + this->mWifi->InternetIPaddress + "-" + String(lat) + "-" + String(lon);
-    this->interface->mserial->printStrln( geoFingerprint + "\nGEO Location FingerPrint is ID: " );
-    
-    geoFingerprint = macChallengeDataAuthenticity( this->interface, geoFingerprint );
-    this->interface->mserial->printStrln( geoFingerprint);
-
-    expFile.println(geoFingerprint);        
-    
-    this->interface->mserial->printStrln("\nAdding a Unique Fingerprint ID to the experimental data. One moment...");
-    this->interface->mserial->printStrln("|--------------------|");
-    this->interface->mserial->printStr(" ");
-
-    float blocks =  20 / this->NUMBER_OF_SENSORS_DATA_VALUES;
-    float sumBlocks = 0.0f;
-    float prevSumBlocks = 0.0f;
-    // ---------------------------- add experimental data ------------------------------------
-    String uniqueFingerPrintID = "";
-    for (int i = 0; i < this->NUMBER_OF_SENSORS_DATA_VALUES ; i++) {
-      for (int k = 0; k < this->DATASET_NUM_SAMPLES  ; k++) {
-        int idxLow = this->config.NUM_SAMPLE_SAMPLING_READINGS * k ;
-        int idxUp =  idxLow + this->config.NUM_SAMPLE_SAMPLING_READINGS;
-
-        String lineRowOfData = this->measurementsOnBoard[k];
-        
-        for (int j = idxLow; j <  idxUp  ; j++) {
-          lineRowOfData = lineRowOfData + String( measurements[i][j] ) +";";
-        }
-        uniqueFingerPrintID = macChallengeDataAuthenticity(this->interface, lineRowOfData + measurements[i][0] );
-
-        lineRowOfData += uniqueFingerPrintID + ";";
-        expFile.println(lineRowOfData);        
-      }
-     
-     sumBlocks += blocks;
-
-      for (int m = (int) prevSumBlocks; m < (int) sumBlocks  ; m++) {
-        this->interface->mserial->printStr("#");
-      }
-      prevSumBlocks = sumBlocks;
-    }
-
-    this->interface->mserial->printStrln(".\nLast dataset entry's unique fingerprint ID:\n" + uniqueFingerPrintID );
-
-    expFile.close();
-    delay(500);
-    this->interface->mserial->printStrln("saving complete.");
-    
-    this->DATASET_NUM_SAMPLES = 0;
-
-    this->interface->onBoardLED->led[0] = this->interface->onBoardLED->LED_GREEN;
-    this->interface->onBoardLED->statusLED(100, 0);
-    return true;
-  }else{
-    this->interface->mserial->printStrln("Error creating CSV dataset file(3): " + this->config.EXPERIMENTAL_DATA_FILENAME);
-    this->interface->onBoardLED->led[0] = this->interface->onBoardLED->LED_RED;
-    this->interface->onBoardLED->statusLED(100, 2);
-    return false;
-  }
-}
-
-// ******************************************************************************
- void MEASUREMENTS::initSaveDataset(){
-    // SAVE DATA MEASUREMENTS ****
-    xSemaphoreTake(this->MemLockSemaphoreDatasetFileAccess, portMAX_DELAY); // enter critical section
-      this->datasetFileIsBusySaveData=true;
-    xSemaphoreGive(this->MemLockSemaphoreDatasetFileAccess); // exit critical section 
-    delay(1000);
-    this->saveDataMeasurements();
-    xSemaphoreTake(this->MemLockSemaphoreDatasetFileAccess, portMAX_DELAY); // enter critical section
-      this->datasetFileIsBusySaveData=false;
-    xSemaphoreGive(this->MemLockSemaphoreDatasetFileAccess); // exit critical section 
- }
-
-// ***********************************************************************************
-void MEASUREMENTS::runExternalMeasurements(){
-  if (this->Measurments_EN == false )
-      return;
-
-  if (this->config.MEASUREMENT_INTERVAL < ( millis() -  this->LAST_DATA_MEASUREMENTS ) ){
-    this->LAST_DATA_MEASUREMENTS=millis(); 
-    this->interface->mserial->printStrln("");
-    this->interface->mserial->printStrln("Requesting sensor values (" + String(this ->DATASET_NUM_SAMPLES) + ")...");
-
-    this->readSensorMeasurements();
-    
-    if(datasetFileIsBusyUploadData){
-      this->interface->mserial->printStr("file is busy....");
-      this->interface->onBoardLED->led[0] = this->interface->onBoardLED->LED_RED;
-      this->interface->onBoardLED->statusLED(100, 2);
-    }
-    if(this->DATASET_NUM_SAMPLES + 1 > this->config.MEASUREMENTS_BUFFER_SIZE ){
-      this->interface->mserial->printStrln("\nSaving collected data....");
-      this->interface->onBoardLED->led[0] = this->interface->onBoardLED->LED_RED;
-      this->interface->onBoardLED->statusLED(100, 0);
-      while (datasetFileIsBusyUploadData){
-      }
-      this->interface->onBoardLED->led[0] = this->interface->onBoardLED->LED_GREEN;
-      this->interface->onBoardLED->statusLED(100, 1);
-      this->initSaveDataset();
-    }else{ // measurements buffer is not full
-
-    }
-
-    this->scheduleWait=false;
-  }
-
-/*
-  if (this->scheduleWait){
-    this->interface->mserial->printStrln("");
-    this->interface->mserial->printStrln("Waiting (schedule) ..");
-  }
-*/
-
-  if (millis()-lastMillisSensors > 60000){    
-    int waitTimeWIFI =0;
-    /*
-    xSemaphoreTake(this->interface->MemLockSemaphoreCore1, portMAX_DELAY); // enter critical section
-      lastMillisSensors=millis();
-      this->interface->mserial->printStrln("Sensor Acq. in " + String((this->config.MEASUREMENT_INTERVAL/60000)-waitTimeSensors) + " min </\> Upload Experimental Data to a Dataverse Repository in " + String((this->config.UPLOAD_DATASET_DELTA_TIME/60000)-waitTimeWIFI) + " min");
-      waitTimeSensors++;
-    xSemaphoreGive(this->interface->MemLockSemaphoreCore1); // exit critical section
-  */
-  }
-}
-
 // *************************************************************************
-void MEASUREMENTS::readOnboardSensorData(){
+void APRS_CWOP_CLASS::readOnboardSensorData(){
     this->onBoardSensors->request_onBoard_Sensor_Measurements();
     this->measurementsOnBoard[this->DATASET_NUM_SAMPLES]  = String ( this->interface->rtc.getDateTime() ) + ";";
     this->measurementsOnBoard[this->DATASET_NUM_SAMPLES] += String( this->onBoardSensors->onboardTHsensor->measurement[1] ) + ";" ;
@@ -463,14 +226,7 @@ void MEASUREMENTS::readOnboardSensorData(){
 }
 
 // ****************************************************************
-void MEASUREMENTS::readChannel2SensorMeasurements ( int pos ){
-   if (this->config.channel_2_switch_en == false)
-    return;
-
-   int n=0;
-   if(this->config.channel_1_switch_on_pos > 1){ // ADC
-      n=2;
-   }
+void APRS_CWOP_CLASS::readChannel2SensorMeasurements ( int pos ){
 
  // SHT3x sensor
   if(this->ch2_sensor_type  == "sht3x"){
@@ -492,7 +248,20 @@ void MEASUREMENTS::readChannel2SensorMeasurements ( int pos ){
 }
 
 // *****************************************************************************
-void MEASUREMENTS::readSensorMeasurements() {  
+void APRS_CWOP_CLASS::readSensorMeasurements() {  
+   if (this->Measurments_EN == false )
+      return;
+
+  if (this->config.MEASUREMENT_INTERVAL < ( millis() -  this->LAST_DATA_MEASUREMENTS ) ){
+    this->LAST_DATA_MEASUREMENTS=millis(); 
+    this->interface->mserial->printStrln("");
+    this->interface->mserial->printStrln("Requesting sensor values (" + String(this ->DATASET_NUM_SAMPLES) + ")...");
+
+    this->readSensorMeasurements();
+    
+    this->scheduleWait=false;
+  }
+
   this->readOnboardSensorData(); 
 
   this->ds18b20->requestMeasurements(); 
@@ -616,13 +385,12 @@ void MEASUREMENTS::readSensorMeasurements() {
 
   // Reset the watchdog
   wdt_reset();
-  
+
 }
 
 
-
 // ******************************************************
-bool MEASUREMENTS::initializeDynamicVar(  int size1D, int size2D ){    
+bool APRS_CWOP_CLASS::initializeDynamicVar(  int size1D, int size2D ){    
     this->measurements = (float **)heap_caps_malloc(size1D * sizeof(float*), MALLOC_CAP_SPIRAM);
     if(this->measurements == NULL){
       //this->freeAllocatedMemory(measurements,i1D);
@@ -658,7 +426,7 @@ bool MEASUREMENTS::initializeDynamicVar(  int size1D, int size2D ){
 
 // --------------------------------------------------------------------------
 
-bool MEASUREMENTS::saveSettings(fs::FS &fs){
+bool APRS_CWOP_CLASS::saveSettings(fs::FS &fs){
     this->interface->mserial->printStrln( this->interface->DeviceTranslation("save_daq_settings")  + "...");
 
     if (fs.exists("/measurements.cfg") )
@@ -678,7 +446,7 @@ bool MEASUREMENTS::saveSettings(fs::FS &fs){
 }
 // --------------------------------------------------------------------
 
-bool MEASUREMENTS::readSettings(fs::FS &fs){    
+bool APRS_CWOP_CLASS::readSettings(fs::FS &fs){    
     File settingsFile = fs.open("/measurements.cfg", FILE_READ);
     if (!settingsFile){
         this->interface->mserial->printStrln( this->interface->DeviceTranslation("err_notfound_daq_settings")  + ".");
@@ -703,7 +471,7 @@ bool MEASUREMENTS::readSettings(fs::FS &fs){
 
 // *********************************************************
 // GBRL commands --------------------------------------------------------------
- bool MEASUREMENTS::helpCommands(String $BLE_CMD, uint8_t sendTo){
+ bool APRS_CWOP_CLASS::helpCommands(String $BLE_CMD, uint8_t sendTo){
     if($BLE_CMD != "$?" && $BLE_CMD !="$help" )
         return false;
 
@@ -727,7 +495,7 @@ bool MEASUREMENTS::readSettings(fs::FS &fs){
 // -------------------------------------------------------------------------------
 
 
-bool MEASUREMENTS::gbrl_commands(String $BLE_CMD, uint8_t sendTo){
+bool APRS_CWOP_CLASS::gbrl_commands(String $BLE_CMD, uint8_t sendTo){
     String dataStr="";
 
     if ($BLE_CMD == "$view ch2"){
@@ -855,7 +623,7 @@ bool MEASUREMENTS::gbrl_commands(String $BLE_CMD, uint8_t sendTo){
 
 
 // ********************************************************
-bool MEASUREMENTS:: gbrl_summary_measurement_config( uint8_t sendTo){
+bool APRS_CWOP_CLASS:: gbrl_summary_measurement_config( uint8_t sendTo){
     String dataStr = this->interface->DeviceTranslation("config_summary") +  ":\n";
     dataStr += this->interface->DeviceTranslation("mi_interval") +  ": " + String(this->config.MEASUREMENT_INTERVAL/1000) + " sec.\n\n";
     this->interface->sendBLEstring( dataStr , sendTo); 
@@ -864,7 +632,7 @@ bool MEASUREMENTS:: gbrl_summary_measurement_config( uint8_t sendTo){
 
 
 // *******************************************************
-bool MEASUREMENTS::cfg_commands(String $BLE_CMD, uint8_t sendTo){
+bool APRS_CWOP_CLASS::cfg_commands(String $BLE_CMD, uint8_t sendTo){
     String dataStr="";
     long int hourT; 
     long int minT; 
@@ -900,7 +668,7 @@ bool MEASUREMENTS::cfg_commands(String $BLE_CMD, uint8_t sendTo){
 }
 
 // *******************************************************
-bool MEASUREMENTS::measurementInterval(String $BLE_CMD, uint8_t sendTo){
+bool APRS_CWOP_CLASS::measurementInterval(String $BLE_CMD, uint8_t sendTo){
     if($BLE_CMD !="$MEASURE INTERVAL" && $BLE_CMD !="$measure interval")
         return false;
 
@@ -924,7 +692,7 @@ bool MEASUREMENTS::measurementInterval(String $BLE_CMD, uint8_t sendTo){
 
 
 // ********************************************************
-bool MEASUREMENTS::history(String $BLE_CMD, uint8_t sendTo){
+bool APRS_CWOP_CLASS::history(String $BLE_CMD, uint8_t sendTo){
     if($BLE_CMD != "$history"  )
         return false;
 
@@ -1006,32 +774,15 @@ const int     timeZone              = 0;                       // Time zone
 const int     eeTime                = 0;                       // EEPROM address for storing last known good time
 
 
-
-
-
-
-// The APRS connection client
-EthernetClient  ethClient;
-unsigned long   linkLastTime = 0UL;             // Last connection time
-
-// When ADC completed, take an interrupt
-EMPTY_INTERRUPT(ADC_vect);
-
 // Statistics (round median filter for the last 3 values)
 enum      rMedIdx {MD_TEMP, MD_PRES, MD_RSSI, MD_SRAD, MD_VCC, MD_A0, MD_A1, MD_ALL};
 int       rMed[MD_ALL][4];
-const int eeRMed = 16; // EEPROM address for storing the round median array
 
 // Sensors
 const unsigned long snsReadTime = 30UL * 1000UL;                          // Total time to read sensors, repeatedly, for aprsMsrmMax times
 const unsigned long snsDelayBfr = 3600000UL / aprsRprtHour - snsReadTime; // Delay before sensor readings
 const unsigned long snsDelayBtw = snsReadTime / aprsMsrmMax;              // Delay between sensor readings
 unsigned long       snsNextTime = 0UL;                                    // Next time to read the sensors
-
-Adafruit_BMP280     atmo;                                                 // The athmospheric sensor
-bool                atmo_ok = false;                                      // The athmospheric sensor presence flag
-BH1750              light(0x23);                                          // The illuminance sensor
-bool                light_ok = false;                                     // The illuminance sensor presence flag
 
 
 // **************************************
