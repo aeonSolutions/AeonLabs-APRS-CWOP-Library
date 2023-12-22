@@ -18,8 +18,8 @@
 Last update: 22-12-2023
 </p>
 
-# [![CodeFactor](https://www.codefactor.io/repository/github/aeonsolutions/aeonlabs-esp32-c-base-firmware-libraries/badge)](https://www.codefactor.io/repository/github/aeonsolutions/aeonlabs-esp32-c-base-firmware-libraries) APRS CWOP Library for the ESP32
-**current project Total: > 500 work.h**
+# [![CodeFactor](https://www.codefactor.io/repository/github/aeonsolutions/aeonlabs-aprs-cwop-library/badge)](https://www.codefactor.io/repository/github/aeonsolutions/aeonlabs-aprs-cwop-library) APRS CWOP Library for the ESP32
+**current project Total: > 4 work.h**
 
 This is a simple C++ class library I maintain to speed up firmware code development on all my smart electronics for weather stations reporting to the APRS CWOP.
 This is still an early code development. Is memory intensive and lacks many code optimizations.
