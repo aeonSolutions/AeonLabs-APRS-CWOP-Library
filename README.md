@@ -30,7 +30,7 @@ The current code development is heavily based on the code by [cstroie](https://g
 
 ## How to use this Library
 If you're using Arduino Studio for windows, download this repository and unzip it to the "Arduino/libraries" folder located in "Documents". <br>
-Next rename the unziped folder "aeonlabs-ESP32-C-Base-Firmware-Libraries-main" to "AeonLabs". <br>
+Next rename the unziped folder "AeonLabs-APRS-CWOP-Library-main" to "AeonLabs_APRS_CWOP". <br>
 Restart Arduino Studio, and the Aeonlabs library is now ready to be used. 
 
 
