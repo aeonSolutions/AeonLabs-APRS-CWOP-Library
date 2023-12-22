@@ -64,10 +64,10 @@ extern "C"
   // **************************** == Measurements Class == ************************
 class APRS_CWOP_CLASS {
     private:
-        INTERFACE_CLASS* interface;
-        M_WIFI_CLASS* mWifi = NULL ;
-        DISPLAY_LCD_CLASS* display = NULL;
-        ONBOARD_SENSORS* onBoardSensors = NULL;
+        INTERFACE_CLASS* interface       = nullptr;
+        M_WIFI_CLASS* mWifi              = nullptr ;
+        DISPLAY_LCD_CLASS* display       = nullptr;
+        ONBOARD_SENSORS* onBoardSensors  = nullptr;
 
         unsigned long LAST_DATASET_UPLOAD = 0;
         unsigned long LAST_DATA_MEASUREMENTS = 0;
@@ -77,7 +77,7 @@ class APRS_CWOP_CLASS {
 
         uint8_t NUMBER_OF_SENSORS_DATA_VALUES;
     
-        float **measurements = NULL; //pointer to pointer
+        float **measurements = nullptr; //pointer to pointer
         String* measurementsOnBoard;
         int measureIndex[2];
 
@@ -97,12 +97,6 @@ class APRS_CWOP_CLASS {
         bool sw_commands(String $BLE_CMD, uint8_t sendTo);
 
     public:
-
-        // external 3V3 power
-        uint8_t ENABLE_3v3_PWR_PIN;
-        // Voltage reference
-        uint8_t VOLTAGE_REF_PIN;
-
         // Reports and measurements
         const int aprsRprtHour   = 10; // Number of APRS reports per hour
         const int aprsMsrmMax    = 3;  // Number of measurements per report (keep even)
@@ -111,17 +105,20 @@ class APRS_CWOP_CLASS {
 
         bool       PROBE              = true;                   // True if the station is being probed
 
-        const char aprsPath[]     PROGMEM = ">APRS,TCPIP*:";
-        const char aprsTlmPARM[]  PROGMEM = ":PARM.Light,Soil,RSSI,Vcc,Tmp,PROBE,ATMO,LUX,SAT,BAT,TM,RB,B8";
-        const char aprsTlmEQNS[]  PROGMEM = ":EQNS.0,20,0,0,20,0,0,-1,0,0,0.004,4.5,0,1,-100";
-        const char aprsTlmUNIT[]  PROGMEM = ":UNIT.mV,mV,dBm,V,C,prb,on,on,sat,low,err,N/A,N/A";
-        const char aprsTlmBITS[]  PROGMEM = ":BITS.10011111, ";
-        const char eol[]          PROGMEM = "\r\n";
+        const char aprsPath[]      = ">APRS,TCPIP*:";
+        const char aprsTlmPARM[]   = ":PARM.Light,Soil,RSSI,Vcc,Tmp,PROBE,ATMO,LUX,SAT,BAT,TM,RB,B8";
+        const char aprsTlmEQNS[]   = ":EQNS.0,20,0,0,20,0,0,-1,0,0,0.004,4.5,0,1,-100";
+        const char aprsTlmUNIT[]   = ":UNIT.mV,mV,dBm,V,C,prb,on,on,sat,low,err,N/A,N/A";
+        const char aprsTlmBITS[]   = ":BITS.10011111, ";
+        const char eol[]           = "\r\n";
 
         char       aprsPkt[100]           = "";     // The APRS packet buffer, largest packet is 82 for v2.1
 
         // The APRS connection client
         unsigned long   linkLastTime = 0UL;             // Last connection time
+
+        // Voltage reference
+        uint8_t VOLTAGE_REF_PIN;
 
         bool hasNewMeasurementValues;
         float last_measured_probe_temp;
@@ -133,7 +130,7 @@ class APRS_CWOP_CLASS {
         bool Measurments_NEW;
         String measurement_Start_Time;
 
-           // ...................................................     
+        // ...................................................     
         typedef struct{
             String aprsCallSign  = "FW0727";
             String aprsPassCode  = "-1";
@@ -159,7 +156,6 @@ class APRS_CWOP_CLASS {
             // Measurements: Planning / Schedule  **********************************
             unsigned long UPLOAD_DATASET_DELTA_TIME;
             unsigned long MEASUREMENT_INTERVAL;
-
 
             // configuration: PCB specific
             float    MCU_VDD = 3.38;
@@ -238,7 +234,6 @@ class APRS_CWOP_CLASS {
         void aprsSendTelemetrySetup();
         void aprsSendStatus(const char *message);
         void aprsSendPosition(const char *comment = NULL);
-
 };
 
 
