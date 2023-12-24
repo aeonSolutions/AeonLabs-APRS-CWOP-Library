@@ -66,35 +66,11 @@ class APRS_CWOP_CLASS {
     private:
         INTERFACE_CLASS* interface       = nullptr;
         M_WIFI_CLASS* mWifi              = nullptr ;
-        DISPLAY_LCD_CLASS* display       = nullptr;
         ONBOARD_SENSORS* onBoardSensors  = nullptr;
-
-        unsigned long LAST_DATASET_UPLOAD = 0;
-        unsigned long LAST_DATA_MEASUREMENTS = 0;
-        unsigned long MAX_LATENCY_ALLOWED;
-        
-        long int lastMillisSensors;
-
-        uint8_t NUMBER_OF_SENSORS_DATA_VALUES;
-    
-        float **measurements = nullptr; //pointer to pointer
-        String* measurementsOnBoard;
-        int measureIndex[2];
-
-        const float MCU_ADC_DIVIDER = 4096.0;
-        uint8_t SELECTED_ADC_REF_RESISTANCE;
-
-        float adc_ch_calcukated_e_resistance_avg;
-        float adc_ch_measured_voltage_avg;
-
 
         // GBRL commands  *********************************************
         bool helpCommands(String $BLE_CMD, uint8_t sendTo );
-        bool history(String $BLE_CMD, uint8_t sendTo);
-        bool measurementInterval(String $BLE_CMD, uint8_t sendTo);
-        bool cfg_commands(String $BLE_CMD, uint8_t sendTo);
-        bool gbrl_summary_measurement_config( uint8_t sendTo);
-        bool sw_commands(String $BLE_CMD, uint8_t sendTo);
+
 
     public:
         // Reports and measurements
@@ -117,19 +93,6 @@ class APRS_CWOP_CLASS {
         // The APRS connection client
         unsigned long   linkLastTime = 0UL;             // Last connection time
 
-        // Voltage reference
-        uint8_t VOLTAGE_REF_PIN;
-
-        bool hasNewMeasurementValues;
-        float last_measured_probe_temp;
-        float last_measured_time_delta;     
-        int DATASET_NUM_SAMPLES;
-        int DATASET_NUM_SAMPLES_TOTAL;
-        
-        bool Measurments_EN;
-        bool Measurments_NEW;
-        String measurement_Start_Time;
-
         // ...................................................     
         typedef struct{
             String aprsCallSign  = "FW0727";
@@ -145,36 +108,12 @@ class APRS_CWOP_CLASS {
 
             int   altMeters;             // Altitude in Bucharest
 
-            String EXPERIMENTAL_DATA_FILENAME = "measurements.csv";
-
-            // Measurements: RAM Storage of Live Data  ******************************
-            // array size is the number of sensors to do data collection
-            int NUM_SAMPLE_SAMPLING_READINGS;
-            long int SAMPLING_INTERVAL;
-            int MEASUREMENTS_BUFFER_SIZE;
-
-            // Measurements: Planning / Schedule  **********************************
-            unsigned long UPLOAD_DATASET_DELTA_TIME;
-            unsigned long MEASUREMENT_INTERVAL;
-
             // configuration: PCB specific
             float    MCU_VDD = 3.38;
         } config_strut;
 
         config_strut config;
         
-        bool scheduleWait;
-        long int waitTimeSensors;
-
-        SemaphoreHandle_t MemLockSemaphoreDatasetFileAccess = xSemaphoreCreateMutex();
-        bool datasetFileIsBusySaveData = false;
-        bool datasetFileIsBusyUploadData = false;
-
-        // external sensors __________________________________________
-        SHT3X_SENSOR*     sht3x;
-        AHT20_SENSOR*     aht20;
-        DS18B20_SENSOR*   ds18b20;
-        String ch2_sensor_type;
 
         // Sensors
         const unsigned long snsReadTime = 30UL * 1000UL;                          // Total time to read sensors, repeatedly, for aprsMsrmMax times
@@ -200,18 +139,6 @@ class APRS_CWOP_CLASS {
         void init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors );
         
         void settings_defaults();
-        // **********************************
-        void readSensorMeasurements();
-        void readOnboardSensorData();
-        void readChannel2SensorMeasurements(int pos);
-
-
-        // ***********************************
-        bool initializeSensors();
-
-        bool initializeDynamicVar( int size1D, int size2D);
-        //Free Allocated memory
-        void freeAllocatedMemory(int nRow, int nColumn);
 
         // GBRL commands  *********************************************
         bool gbrl_commands(String $BLE_CMD, uint8_t sendTo);
