@@ -15,7 +15,7 @@
 
 <p align="right">
  <a href="https://github-com.translate.goog/aeonSolutions/aeonlabs-ESP32-C-Base-Firmware-Libraries?_x_tr_sl=en&_x_tr_tl=pt&_x_tr_hl=en&_x_tr_pto=wapp">Change Language</a> <br>
-Last update: 24-12-2023
+Last update: 25-12-2023
 </p>
 
 # [![CodeFactor](https://www.codefactor.io/repository/github/aeonsolutions/aeonlabs-aprs-cwop-library/badge)](https://www.codefactor.io/repository/github/aeonsolutions/aeonlabs-aprs-cwop-library) APRS CWOP Library for the ESP32
@@ -34,6 +34,13 @@ The [Citizen Weather Observer Program](https://www.weather.gov/cle/CWOP) (CWOP) 
 **How to connect to the CWOP Network** <br>
 First one needs to signup at https://madis.ncep.noaa.gov/madis_cwop.shtml and when the token ID arrives it  needs to be added to the firmware code. An easy way to submit weather reports to the NOAA Citizen's Weather Observer Program is by using the [cwop.rest API](http://cwop.rest/) or the [Ambient Weather API](https://ambientweather.docs.apiary.io/#reference/ambient-realtime-api). Those looking into a vanilla C++ code implementation one can find it on GitHub on this repository and on [Costin Stroie's](https://github.com/cstroie) repository: https://github.com/cstroie/WxUno. To test if your hardware setup if is sending APRS packets and to ensure that everything is working properly one can look at a site like https://aprs.fi/ to see if it was received by the terrestrial network.
 
+**Important links** <br>
+- [HX1 APRS Transmitter Hookup Guide](https://learn.sparkfun.com/tutorials/hx1-aprs-transmitter-hookup-guide/all) by Sparkfun
+- [APRS Specification](http://www.aprs.org/doc/APRS101.PDF)
+- [Telemetry format and app notes](https://github.com/PhirePhly/aprs_notes/blob/master/telemetry_format.md) on Github
+- [Sparkfun's Trackuino](https://github.com/sparkfun/SparkFun_Trackuino)
+- [Arduino ARPS](https://handiko.github.io/Arduino-APRS/) by [handiko](https://github.com/handiko)
+  
 <br>
 
 ## How to use this Library
