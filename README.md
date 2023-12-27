@@ -26,7 +26,7 @@ This is still an early code development. Is memory intensive and lacks many code
 
 The current code development is heavily based on the code by [cstroie](https://github.com/cstroie) found on this github repository: https://github.com/cstroie/WxUno
 
- ![](https://github.com/aeonSolutions/AeonLabs-WIFI-BLE-RFID-NFC-Desk-Contacless-Reader-Writer/blob/main/designs/working_red.png) **Current Status:** No syntax errors 
+ <img height="20" src="https://github.com/aeonSolutions/AeonLabs-WIFI-BLE-RFID-NFC-Desk-Contacless-Reader-Writer/blob/main/designs/working_red.png"> **Current Status:** No syntax errors 
 
 <br>
 
