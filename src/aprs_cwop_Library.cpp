@@ -34,54 +34,89 @@ NOTE:
 The current code development is heavily based on the code by cstroie found on this github repository: https://github.com/cstroie/WxUno
 */
 
-#include "measurements.h"
 #include "Arduino.h"
-#include"m_math.h"
-#include "m_atsha204.h"
 #include "FS.h"
 #include <LittleFS.h>
-#include "m_atsha204.h"
-#include "lcd_icons.h"
 #include "m_file_functions.h"
-#include "driver/touch_pad.h"
+#include "aprs_cwop_library.h"
+#include "driver/temp_sensor.h"
 
-
-
-MEASUREMENTS::APRS_CWOP_CLASS() {
+APRS_CWOP_CLASS::APRS_CWOP_CLASS() {
     // Telemetry bits
     this->aprsTlmBits     = B00000000;
+    this->settings_defaults();
 }
 
 //****************************************************************
-void APRS_CWOP_CLASS::init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors ){    
+void APRS_CWOP_CLASS::init(INTERFACE_CLASS* interface, M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors ){    
     this->interface = interface;
-    this->interface->mserial->printStr("\ninit measurements library ...");
+    this->interface->mserial->printStr("\nInit measurements library ...");
     this->mWifi = mWifi;
     this->onBoardSensors =  onBoardSensors;
 
     this->settings_defaults();
     this->interface = interface;
 
-  // Initialize the random number generator and set the APRS telemetry start sequence
-  randomSeed(hwTemp + timeUNIX(false) + hwVcc + millis());
-  aprsTlmSeq = random(1000);
+    temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
+    temp_sensor.dac_offset = TSENS_DAC_L2;  // TSENS_DAC_L2 is default; L4(-40°C ~ 20°C), L2(-10°C ~ 80°C), L1(20°C ~ 100°C), L0(50°C ~ 125°C)
+    temp_sensor_set_config(temp_sensor);
+    temp_sensor_start();
+    
+    float hwTemp = 0;
+    temp_sensor_read_celsius(&hwTemp);
   
-  this->interface->mserial->printStrln( "Telemetry:" + String(aprsTlmSeq) );
-  // Start the sensor timer
-  snsNextTime = millis();
+    // Initialize the random number generator and set the APRS telemetry start sequence
+    randomSeed( (int)hwTemp + timeUNIX(false) + millis());
+    aprsTlmSeq = random(1000);
+    
+    this->interface->mserial->printStrln( "Telemetry:" + String(aprsTlmSeq) );
+    // Start the sensor timer
+    snsNextTime = millis();
 
-  this->interface->mserial->printStrln("done.");
+    this->interface->mserial->printStrln("done.");
 }
 
 // ****************************************************************************
 void APRS_CWOP_CLASS::settings_defaults(){
 
-    this->config.aprsServer                   = "cwop5.aprs.net";   // CWOP APRS-IS server address to connect to
-    this->config.aprsPort                     = 14580;              // CWOP APRS-IS port
+    this->config.aprsServer         = "cwop5.aprs.net";   // CWOP APRS-IS server address to connect to
+    this->config.aprsPort           = 14580;              // CWOP APRS-IS port
 
-    this->config.aprsCallSign                 = "null";
-    this->config.aprsPassCode                 = "-1";
-    this->config.aprsLocation                 = "null";
+    this->config.aprsCallSign       = "null";
+    this->config.aprsPassCode       = "-1";
+    this->config.aprsLocation       = "null";
+
+    // Sensors
+    this->snsReadTime              = 30UL * 1000UL;                          // Total time to read sensors, repeatedly, for aprsMsrmMax times
+    this->snsDelayBfr              = 3600000UL / this->aprsRprtHour - this->snsReadTime; // Delay before sensor readings
+    this->snsDelayBtw              = this->snsReadTime / this->aprsMsrmMax;              // Delay between sensor readings
+    this->snsNextTime              = 0UL;                                    // Next time to read the sensors
+
+        // Time synchronization and keeping
+    this->timeServer               = "utcnist.colorado.edu";  // Time server address to connect to (RFC868)
+    this->timePort                 = 37;                      // Time server port
+    this->timeNextSync             = 0UL;                     // Next time to syncronize
+    this->timeDelta                = 0UL;                     // Difference between real time and internal clock
+    this->timeOk                   = false;                   // Flag to know the time is accurate
+    this->timeZone                 = 0;                       // Time zone 
+
+    this->aprsPath                 = ">APRS,TCPIP*:";
+    this->aprsTlmPARM              = ":PARM.Light,Soil,RSSI,Vcc,Tmp,PROBE,ATMO,LUX,SAT,BAT,TM,RB,B8";
+    this->aprsTlmEQNS              = ":EQNS.0,20,0,0,20,0,0,-1,0,0,0.004,4.5,0,1,-100";
+    this->aprsTlmUNIT              = ":UNIT.mV,mV,dBm,V,C,prb,on,on,sat,low,err,N/A,N/A";
+    this->aprsTlmBITS              = ":BITS.10011111, ";
+    this->eol                      = "\r\n";
+
+    this->PROBE                    = true;                     // True if the station is being probed
+
+    this->aprsPkt                  = "";                       // The APRS packet buffer, largest packet is 82 for v2.1
+    this->linkLastTime             = 0UL;                      // Last connection time
+
+        // Reports and measurements
+    this->aprsRprtHour             = 10; // Number of APRS reports per hour
+    this->aprsMsrmMax              = 3;  // Number of measurements per report (keep even)
+    this->aprsMsrmCount            = 0;  // Measurements counter
+    this->aprsTlmSeq               = 0;  // Telemetry sequence mumber
 }
 
 
@@ -100,7 +135,7 @@ bool APRS_CWOP_CLASS::saveSettings(fs::FS &fs){
         return false;
     }
 
-    settingsFile.print( String(this->config.MEASUREMENT_INTERVAL) + String(';'));
+    settingsFile.print( String(';'));
 
     settingsFile.close();
     return true;
@@ -122,12 +157,47 @@ bool APRS_CWOP_CLASS::readSettings(fs::FS &fs){
 
     String temp= settingsFile.readStringUntil(';');
 
-    this->config.MEASUREMENT_INTERVAL = atol(settingsFile.readStringUntil( ';' ).c_str() ); 
+    //this->config.MEASUREMENT_INTERVAL = atol(settingsFile.readStringUntil( ';' ).c_str() ); 
 
     settingsFile.close();
     return true;
 }
+// *************************************
 
+bool APRS_CWOP_CLASS::aprsSendDataCWOP(){
+  // Connect to APRS server
+  if ( !this->client.connect(this->config.aprsServer.c_str(), this->config.aprsPort) ) {
+      this->interface->mserial->printStrln("Cloud server URL connection FAILED!");
+      this->interface->mserial->printStrln(this->config.aprsServer);
+      int server_status = client.connected();
+      this->interface->mserial->printStrln("Server status code: " + String(server_status));
+      return false;
+  }
+  
+  this->interface->mserial->printStrln("Connected to the ARPS server " + String(this->config.aprsServer) ); 
+  this->interface->mserial->printStrln("");
+
+  // Authentication
+  this->aprsAuthenticate();
+  // Send the position, altitude and comment in firsts minutes after boot
+  if (millis() < this->snsDelayBfr) this->aprsSendPosition();
+  // Send weather data if the athmospheric sensor is present
+  this->aprsSendWeather(rMedOut(MD_TEMP), -1, rMedOut(MD_PRES), rMedOut(MD_SRAD));
+  // Send the telemetry
+  float hwTemp = 0;
+  temp_sensor_read_celsius(&hwTemp);
+  this->aprsSendTelemetry(rMedOut(MD_A0) / 20,
+                    rMedOut(MD_A1) / 20,
+                    rMedOut(MD_RSSI),
+                    (rMedOut(MD_VCC) - 4500) / 4,
+                    hwTemp / 100 + 100,
+                    this->aprsTlmBits);
+  //aprsSendStatus("Fine weather");
+  // Close the connection
+  this->client.stop();
+  // Keep the millis the connection worked
+
+}
 // **************************************
 long APRS_CWOP_CLASS::altFeet(int altMeters){
   return (long)(altMeters * 3.28084);  // Altitude in feet
@@ -138,7 +208,6 @@ long APRS_CWOP_CLASS::altFeet(int altMeters){
   return pow((float)(1.0 - 2.25577e-5 * altMeters), (float)(-5.25578));  // Altitude correction for QNH
  }
 
- 
 /** ***************************************************
   Simple median filter: get the median
   2014-03-25: started by David Cary
@@ -183,7 +252,7 @@ void APRS_CWOP_CLASS::aprsSend(const char *pkt) {
 #ifdef DEBUG
   Serial.print(pkt);
 #endif
-  ethClient.print(pkt);
+client.print(pkt);
 }
 
 /**
@@ -192,7 +261,7 @@ void APRS_CWOP_CLASS::aprsSend(const char *pkt) {
   @param *buf the buffer to return the time to
   @param len the buffer length
 */
-char aprsTime(char *buf, size_t len) {
+char APRS_CWOP_CLASS::aprsTime(char *buf, size_t len) {
   // Get the time, but do not open a connection to server
   unsigned long utm = timeUNIX(false);
   // Compute hour, minute and second
@@ -208,16 +277,16 @@ char aprsTime(char *buf, size_t len) {
   user FW0727 pass -1 vers WxUno 3.1"
 */
 void APRS_CWOP_CLASS::aprsAuthenticate() {
-  strcpy_P(aprsPkt, PSTR("user "));
-  strcat_P(aprsPkt, this->config.aprsCallSign);
-  strcat_P(aprsPkt, PSTR(" pass "));
-  strcat_P(aprsPkt, this->config.aprsPassCode);
-  strcat_P(aprsPkt, PSTR(" vers "));
-  strcat_P(aprsPkt, this->interface->DEVICE_NAME);
-  strcat_P(aprsPkt, PSTR(" "));
-  strcat_P(aprsPkt, this->interface->firmware_version);
-  strcat_P(aprsPkt, eol);
-  aprsSend(aprsPkt);
+  this->aprsPkt = "user ";
+  this->aprsPkt += this->config.aprsCallSign;
+  this->aprsPkt += " pass ";
+  this->aprsPkt += this->config.aprsPassCode;
+  this->aprsPkt += " vers ";
+  this->aprsPkt += this->interface->config.DEVICE_NAME;
+  this->aprsPkt += " ";
+  this->aprsPkt += this->interface->firmware_version;
+  this->aprsPkt += eol;
+  aprsSend(this->aprsPkt.c_str());
 }
 
 /**  ******************************************************
@@ -231,46 +300,46 @@ void APRS_CWOP_CLASS::aprsAuthenticate() {
 */
 void APRS_CWOP_CLASS::aprsSendWeather(int temp, int hmdt, int pres, int lux) {
   char buf[8];
-  strcpy_P(aprsPkt, this->config.aprsCallSign);
-  strcat_P(aprsPkt, aprsPath);
-  strcat_P(aprsPkt, PSTR("@"));
+  this->aprsPkt = this->config.aprsCallSign;
+  this->aprsPkt += aprsPath;
+  this->aprsPkt += "@";
   aprsTime(buf, sizeof(buf));
-  strncat(aprsPkt, buf, sizeof(buf));
-  strcat_P(aprsPkt, this->config.aprsLocation);
+  this->aprsPkt += String(buf);
+  this->aprsPkt += this->config.aprsLocation;
   // Wind (unavailable)
-  strcat_P(aprsPkt, PSTR(".../...g..."));
+   this->aprsPkt +=".../...g...";
   // Temperature
   if (temp >= -460) { // 0K in F
     sprintf_P(buf, PSTR("t%03d"), temp);
-    strncat(aprsPkt, buf, sizeof(buf));
+     this->aprsPkt += String(buf);
   }
   else {
-    strcat_P(aprsPkt, PSTR("t..."));
+     this->aprsPkt += "t...";
   }
   // Humidity
   if (hmdt >= 0) {
     if (hmdt == 100) {
-      strcat_P(aprsPkt, PSTR("h00"));
+       this->aprsPkt += "h00";
     }
     else {
       sprintf_P(buf, PSTR("h%02d"), hmdt);
-      strncat(aprsPkt, buf, sizeof(buf));
+       this->aprsPkt += String(buf);
     }
   }
   // Athmospheric pressure
   if (pres >= 0) {
     sprintf_P(buf, PSTR("b%05d"), pres);
-    strncat(aprsPkt, buf, sizeof(buf));
+    this->aprsPkt += String(buf);
   }
   // Illuminance, if valid
   if (lux >= 0 and lux <= 999) {
     sprintf_P(buf, PSTR("L%03d"), lux);
-    strncat(aprsPkt, buf, sizeof(buf));
+     this->aprsPkt += String(buf);
   }
   // Comment (device name)
-  strcat_P(aprsPkt, this->interface->config.DEVICE_NAME);
-  strcat_P(aprsPkt, eol);
-  aprsSend(aprsPkt);
+   this->aprsPkt += this->interface->config.DEVICE_NAME;
+   this->aprsPkt += this->eol;
+  aprsSend(this->aprsPkt.c_str()  );
 }
 
 /**  *****************************************************
@@ -286,64 +355,67 @@ void APRS_CWOP_CLASS::aprsSendWeather(int temp, int hmdt, int pres, int lux) {
 */
 void APRS_CWOP_CLASS::aprsSendTelemetry(int a0, int a1, int rssi, int vcc, int temp, byte bits) {
   // Increment the telemetry sequence number, reset it if exceeds 999
-  if (++aprsTlmSeq > 999) aprsTlmSeq = 0;
+  if (++this->aprsTlmSeq > 999) this->aprsTlmSeq = 0;
   // Send the telemetry setup if the sequence number is 0
-  if (aprsTlmSeq == 0) aprsSendTelemetrySetup();
+  if (this->aprsTlmSeq == 0) aprsSendTelemetrySetup();
   // Compose the APRS packet
-  strcpy_P(aprsPkt, this->config.aprsCallSign);
-  strcat_P(aprsPkt, aprsPath);
-  strcat_P(aprsPkt, PSTR("T"));
+  this->aprsPkt = this->config.aprsCallSign;
+  this->aprsPkt += this->aprsPath;
+  this->aprsPkt += "T";
   char buf[40];
-  snprintf_P(buf, sizeof(buf), PSTR("#%03d,%03d,%03d,%03d,%03d,%03d,"), aprsTlmSeq, a0, a1, rssi, vcc, temp);
-  strncat(aprsPkt, buf, sizeof(buf));
+  snprintf_P(buf, sizeof(buf), PSTR("#%03d,%03d,%03d,%03d,%03d,%03d,"), this->aprsTlmSeq, a0, a1, rssi, vcc, temp);
+  this->aprsPkt += String(buf);
   itoa(bits, buf, 2);
-  strncat(aprsPkt, buf, sizeof(buf));
-  strcat_P(aprsPkt, eol);
-  aprsSend(aprsPkt);
+  this->aprsPkt += String(buf);
+  this->aprsPkt += this->eol;
+  aprsSend(this->aprsPkt.c_str()  );
 }
 
 /**   ******************************
   Send APRS telemetry setup
 */
 void APRS_CWOP_CLASS::aprsSendTelemetrySetup() {
-  char padCallSign[10];
-  strcpy_P(padCallSign, this->config.aprsCallSign);  // Workaround
-  sprintf_P(padCallSign, PSTR("%-9s"), padCallSign);
+  String padCallSign;
+  padCallSign =  this->config.aprsCallSign;  // Workaround
+  char temp[10];
+  temp = padCallSign.c_str();
+  sprintf_P(temp, PSTR("%-9s"), temp);
+  padCallSign= String(temp);
   // Parameter names
-  strcpy_P(aprsPkt, this->config.aprsCallSign);
-  strcat_P(aprsPkt, aprsPath);
-  strcat_P(aprsPkt, PSTR(":"));
-  strncat(aprsPkt, padCallSign, sizeof(padCallSign));
-  strcat_P(aprsPkt, aprsTlmPARM);
-  strcat_P(aprsPkt, eol);
-  aprsSend(aprsPkt);
+  this->aprsPkt += this->config.aprsCallSign;
+  this->aprsPkt += this->aprsPath;
+  this->aprsPkt += ":";
+  this->aprsPkt += (padCallSign);
+  this->aprsPkt += this->aprsTlmPARM;
+  this->aprsPkt += this->eol;
+  aprsSend(this->aprsPkt.c_str() );
   // Equations
-  strcpy_P(aprsPkt, this->config.aprsCallSign);
-  strcat_P(aprsPkt, aprsPath);
-  strcat_P(aprsPkt, PSTR(":"));
-  strncat(aprsPkt, padCallSign, sizeof(padCallSign));
-  strcat_P(aprsPkt, aprsTlmEQNS);
-  strcat_P(aprsPkt, eol);
-  aprsSend(aprsPkt);
+  this->aprsPkt = this->config.aprsCallSign;
+  this->aprsPkt += aprsPath;
+  this->aprsPkt += ":";
+  this->aprsPkt += (padCallSign);
+  this->aprsPkt += this->aprsTlmEQNS;
+  this->aprsPkt += this->eol;
+  aprsSend(this->aprsPkt.c_str() );
   // Units
-  strcpy_P(aprsPkt, this->config.aprsCallSign);
-  strcat_P(aprsPkt, aprsPath);
-  strcat_P(aprsPkt, PSTR(":"));
-  strncat(aprsPkt, padCallSign, sizeof(padCallSign));
-  strcat_P(aprsPkt, aprsTlmUNIT);
-  strcat_P(aprsPkt, eol);
-  aprsSend(aprsPkt);
+  this->aprsPkt = this->config.aprsCallSign;
+  this->aprsPkt += this->aprsPath;
+  this->aprsPkt += ":";
+  this->aprsPkt = (padCallSign);
+  this->aprsPkt += this->aprsTlmUNIT;
+  this->aprsPkt += this->eol;
+  aprsSend(this->aprsPkt.c_str() );
   // Bit sense and project name
-  strcpy_P(aprsPkt, this->config.aprsCallSign);
-  strcat_P(aprsPkt, aprsPath);
-  strcat_P(aprsPkt, PSTR(":"));
-  strncat(aprsPkt, padCallSign, sizeof(padCallSign));
-  strcat_P(aprsPkt, aprsTlmBITS);
-  strcat_P(aprsPkt, this->interface->config.DEVICE_NAME);
-  strcat_P(aprsPkt, PSTR("/"));
-  strcat_P(aprsPkt, this->interface->firmware_version);
-  strcat_P(aprsPkt, eol);
-  aprsSend(aprsPkt);
+  this->aprsPkt = this->config.aprsCallSign;
+  this->aprsPkt += this->aprsPath;
+  this->aprsPkt += ":";
+  this->aprsPkt = (padCallSign);
+   this->aprsPkt += String(this->aprsTlmBITS);
+   this->aprsPkt += this->interface->config.DEVICE_NAME;
+   this->aprsPkt += "/";
+   this->aprsPkt += this->interface->firmware_version;
+   this->aprsPkt += this->eol;
+  aprsSend(this->aprsPkt.c_str() );
 }
 
 /**  ****************************************
@@ -356,12 +428,12 @@ void APRS_CWOP_CLASS::aprsSendStatus(const char *message) {
   // Send only if the message is not empty
   if (message[0] != '\0') {
     // Send the APRS packet
-    strcpy_P(aprsPkt, this->config.aprsCallSign);
-    strcat_P(aprsPkt, aprsPath);
-    strcat_P(aprsPkt, PSTR(">"));
-    strcat(aprsPkt, message);
-    strcat_P(aprsPkt, eol);
-    aprsSend(aprsPkt);
+    this->aprsPkt = this->config.aprsCallSign;
+    this->aprsPkt += this->aprsPath;
+    this->aprsPkt += ">";
+    this->aprsPkt += message;
+    this->aprsPkt += this->eol;
+    aprsSend(this->aprsPkt.c_str()  );
   }
 }
 
@@ -371,48 +443,52 @@ void APRS_CWOP_CLASS::aprsSendStatus(const char *message) {
 
   @param comment the comment to append
 */
-void APRS_CWOP_CLASS::aprsSendPosition(const char *comment = NULL) {
+void APRS_CWOP_CLASS::aprsSendPosition(const char *comment) {
   // Compose the APRS packet
-  strcpy_P(aprsPkt, this->config.aprsCallSign);
-  strcat_P(aprsPkt, aprsPath);
-  strcat_P(aprsPkt, PSTR("!"));
-  strcat_P(aprsPkt, this->config.aprsLocation);
-  strcat_P(aprsPkt, PSTR("/000/000/A="));
+  this->aprsPkt = this->config.aprsCallSign;
+   this->aprsPkt += aprsPath;
+   this->aprsPkt += "!";
+   this->aprsPkt += this->config.aprsLocation;
+   this->aprsPkt += "/000/000/A=";
   char buf[7];
-  sprintf_P(buf, PSTR("%06d"), this->altFeet(this->altMeters));
-  strncat(aprsPkt, buf, sizeof(buf));
-  if (comment != NULL) strcat(aprsPkt, comment);
-  strcat_P(aprsPkt, eol);
-  aprsSend(aprsPkt);
+  sprintf_P(buf, PSTR("%06d"), this->altFeet(this->config.altMeters ));
+  this->aprsPkt += String( buf);
+  if (comment != NULL) this->aprsPkt += comment;
+   this->aprsPkt += this->eol;
+  aprsSend(this->aprsPkt.c_str() );
 }
 
-// *********************************************************
-// GBRL commands -------------------------------------------
- bool APRS_CWOP_CLASS::helpCommands(String $BLE_CMD, uint8_t sendTo){
-    if($BLE_CMD != "$?" && $BLE_CMD !="$help" )
-        return false;
+// *****************************************************
+/**
+  Get current time as UNIX time (1970 epoch)
+  @param sync flag to show whether network sync is to be performed
+  @return current UNIX time
+*/
+unsigned long APRS_CWOP_CLASS::timeUNIX(bool sync) {
+  // Check if we need to sync
+  if (millis() >= this->timeNextSync and sync) {
+    // Try to get the time from Internet
+    unsigned long utm = 0 ; //ntpSync(); //timeSync();
+    if (utm == 0) {
+      // Time sync has failed, sync again over one minute
+      this->timeNextSync += 1UL * 60 * 1000;
+      this->timeOk = false;
+    } else {
+      // Compute the new time delta
+      timeDelta = utm - (millis() / 1000);
+      // Time sync has succeeded, sync again in 8 hours
+      this->timeNextSync += 8UL * 60 * 60 * 1000;
+      this->timeOk = true;
+      this->interface->mserial->printStr("Network UNIX Time: 0x");
+      this->interface->mserial->printStrln( String(utm, 16) );
+    }
+  }
 
-    String dataStr="Measurements Commands:\n" \
-                    "$ufid                  - "+ this->interface->DeviceTranslation("ufid") +" unique fingerprint ID\n" \ 
-                    "$set mi [sec]          - "+ this->interface->DeviceTranslation("set_mi") +"\n\n";
-
-    this->interface->sendBLEstring( dataStr, sendTo);
-      
-    return false;
- }
-
-// ---------------------------------------------------------
-bool APRS_CWOP_CLASS::gbrl_commands(String $BLE_CMD, uint8_t sendTo){
-    String dataStr="";
-
-    bool result =false;
-    result = this->helpCommands( $BLE_CMD,  sendTo);
-    
-    bool result3 =false;
-    result3 = this->cfg_commands($BLE_CMD,  sendTo);
-    
-    //this->gbrl_menu_selection();
-   
-   return ( result || result2 || result3 || result4 );
-
+  // Get current time based on uptime and time delta,
+  // or just uptime for no time sync ever
+  return (millis() / 1000) + timeDelta;
 }
+
+// **************************************************
+
+

@@ -33,29 +33,13 @@ https://github.com/aeonSolutions/PCB-Prototyping-Catalogue/wiki/AeonLabs-Solutio
 NOTE:
 The current code development is heavily based on the code by cstroie found on this github repository: https://github.com/cstroie/WxUno
 */
+
 #include "Arduino.h"
 #include "interface_class.h"
-#include "m_wifi.h"
-#include "m_display_lcd.h"
-
-#include "esp32-hal-psram.h"
-// #include "rom/cache.h"
-extern "C" 
-{
-#include <esp_himem.h>
-#include <esp_spiram.h>
-}
-
-#include <semphr.h>
 #include "onboard_sensors.h"
-
-#include "sensors/ds18b20.h"
-#include "sensors/aht20.h"
-#include "sensors/sht3x.h"
-
-#include "Adafruit_MQTT.h"
-#include "Adafruit_MQTT_Client.h"
 #include <WiFi.h>
+#include "WiFiClient.h"
+#include "m_wifi.h"
 
 #ifndef MEASUREMENTS_COMMANDS  
   #define MEASUREMENTS_COMMANDS
@@ -70,43 +54,44 @@ class APRS_CWOP_CLASS {
 
         // GBRL commands  *********************************************
         bool helpCommands(String $BLE_CMD, uint8_t sendTo );
-
+        WiFiClient client;
 
     public:
         // Reports and measurements
-        const int aprsRprtHour   = 10; // Number of APRS reports per hour
-        const int aprsMsrmMax    = 3;  // Number of measurements per report (keep even)
-        int       aprsMsrmCount  = 0;  // Measurements counter
-        int       aprsTlmSeq     = 0;  // Telemetry sequence mumber
+        int aprsRprtHour;                   // Number of APRS reports per hour
+        int aprsMsrmMax;                    // Number of measurements per report (keep even)
+        int aprsMsrmCount;                  // Measurements counter
+        int aprsTlmSeq;                     // Telemetry sequence mumber
 
-        bool       PROBE              = true;                   // True if the station is being probed
+        bool PROBE;                         // True if the station is being probed
 
-        const char aprsPath[]      = ">APRS,TCPIP*:";
-        const char aprsTlmPARM[]   = ":PARM.Light,Soil,RSSI,Vcc,Tmp,PROBE,ATMO,LUX,SAT,BAT,TM,RB,B8";
-        const char aprsTlmEQNS[]   = ":EQNS.0,20,0,0,20,0,0,-1,0,0,0.004,4.5,0,1,-100";
-        const char aprsTlmUNIT[]   = ":UNIT.mV,mV,dBm,V,C,prb,on,on,sat,low,err,N/A,N/A";
-        const char aprsTlmBITS[]   = ":BITS.10011111, ";
-        const char eol[]           = "\r\n";
+        String aprsPath;
+        String aprsTlmPARM;
+        String aprsTlmEQNS;
+        String aprsTlmUNIT;
+        String aprsTlmBITS;
+        
+        // Telemetry bits
+        char aprsTlmBits;
+        String eol;
 
-        char       aprsPkt[100]           = "";     // The APRS packet buffer, largest packet is 82 for v2.1
+        String aprsPkt;                     // The APRS packet buffer, largest packet is 82 for v2.1
 
         // The APRS connection client
-        unsigned long   linkLastTime = 0UL;             // Last connection time
+        unsigned long   linkLastTime;       // Last connection time
 
         // ...................................................     
         typedef struct{
-            String aprsCallSign  = "FW0727";
-            String aprsPassCode  = "-1";
-            String aprsLocation  = "4455.29N/02527.08E_";
+            String aprsCallSign;
+            String aprsPassCode;
+            String aprsLocation;
 
-            // Telemetry bits
-            char aprsTlmBits;
 
             // APRS parameters
-            String  aprsServer;          // CWOP APRS-IS server address to connect to
-            int   aprsPort;              // CWOP APRS-IS port
+            String  aprsServer;             // CWOP APRS-IS server address to connect to
+            int   aprsPort;                 // CWOP APRS-IS port
 
-            int   altMeters;             // Altitude in Bucharest
+            int   altMeters;                // Altitude in Bucharest
 
             // configuration: PCB specific
             float    MCU_VDD = 3.38;
@@ -116,18 +101,18 @@ class APRS_CWOP_CLASS {
         
 
         // Sensors
-        const unsigned long snsReadTime = 30UL * 1000UL;                          // Total time to read sensors, repeatedly, for aprsMsrmMax times
-        const unsigned long snsDelayBfr = 3600000UL / aprsRprtHour - snsReadTime; // Delay before sensor readings
-        const unsigned long snsDelayBtw = snsReadTime / aprsMsrmMax;              // Delay between sensor readings
-        unsigned long       snsNextTime = 0UL;                                    // Next time to read the sensors
+        unsigned long snsReadTime;           // Total time to read sensors, repeatedly, for aprsMsrmMax times
+        unsigned long snsDelayBfr;           // Delay before sensor readings
+        unsigned long snsDelayBtw;           // Delay between sensor readings
+        unsigned long snsNextTime;           // Next time to read the sensors
 
         // Time synchronization and keeping
-        const char    timeServer[] PROGMEM  = "utcnist.colorado.edu";  // Time server address to connect to (RFC868)
-        const int     timePort              = 37;                      // Time server port
-        unsigned long timeNextSync          = 0UL;                     // Next time to syncronize
-        unsigned long timeDelta             = 0UL;                     // Difference between real time and internal clock
-        bool          timeOk                = false;                   // Flag to know the time is accurate
-        const int     timeZone              = 0;                       // Time zone
+        String        timeServer;                // Time server address to connect to (RFC868)
+        int           timePort;                    // Time server port
+        unsigned long timeNextSync;                // Next time to syncronize
+        unsigned long timeDelta;                   // Difference between real time and internal clock
+        bool          timeOk;                      // Flag to know the time is accurate
+        int           timeZone;                    // Time zone
 
         // Statistics (round median filter for the last 3 values)
         enum      rMedIdx {MD_TEMP, MD_PRES, MD_RSSI, MD_SRAD, MD_VCC, MD_A0, MD_A1, MD_ALL};
@@ -136,7 +121,7 @@ class APRS_CWOP_CLASS {
         // ____________________________________________________
         APRS_CWOP_CLASS();
         
-        void init(INTERFACE_CLASS* interface, DISPLAY_LCD_CLASS* display,M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors );
+        void init(INTERFACE_CLASS* interface,M_WIFI_CLASS* mWifi, ONBOARD_SENSORS* onBoardSensors );
         
         void settings_defaults();
 
@@ -161,6 +146,11 @@ class APRS_CWOP_CLASS {
         void aprsSendTelemetrySetup();
         void aprsSendStatus(const char *message);
         void aprsSendPosition(const char *comment = NULL);
+        char aprsTime(char *buf, size_t len);
+        unsigned long timeUNIX(bool sync = true);
+
+        bool aprsSendDataCWOP();
+
 };
 
 
